@@ -1,9 +1,21 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **13.2.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **13.3.0**.
 
-## [13.2.0] - current
+## [13.3.0] - current
+
+### Changed
+- **Generator naming.** The "Paste in Your Studies" heading/label is now
+  "Paste in your study material".
+- **Nav & landing.** Reverted the nav link and empty-state button from
+  "Paste / Paste Your Studies" back to **Create / Create Flashcards**.
+- **Removed the separate "Generate AI Flashcards from Topic" button.**
+  AI is still used for generating cards from pasted notes and for quizzes;
+  it simply no longer has its own topic box on the generator page.
+- **Downloads.** Removed the JSON download option, keeping **PDF** and **TXT**.
+
+## [13.2.0] - previous
 
 ### Added
 - **AI flashcards from a topic.** The Paste page now has an "Generate AI
