@@ -25,7 +25,7 @@ import generator
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "12.6.0"
+APP_VERSION = "13.0.0"
 
 
 def _load_dotenv():
@@ -751,6 +751,29 @@ def generate():
     if guest_id:
         _set_guest_cookie(resp, guest_id)
     return resp
+
+
+# ------------------------------------------------------------------ quizzes
+@app.route("/api/quiz/generate", methods=["POST"])
+@_throttle(5, 60)
+def quiz_generate():
+    """Build a multiple-choice quiz with the AI (Gemini if configured)."""
+    user = _current_user()
+    if not user:
+        return jsonify({"error": "Not signed in"}), 401
+
+    data = request.get_json(silent=True) or {}
+    subject = str(data.get("subject") or "Science").strip()[:40]
+    if subject not in ("English", "Math", "Science"):
+        subject = "Science"
+    topic = str(data.get("topic") or "").strip()[:120]
+    try:
+        number = max(3, min(int(data.get("number") or 5), 10))
+    except (ValueError, TypeError):
+        number = 5
+
+    quiz = generator.generate_quiz(subject, topic, number)
+    return jsonify({"quiz": quiz, "subject": subject})
 
 
 # ------------------------------------------------------------------ study

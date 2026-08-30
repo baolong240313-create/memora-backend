@@ -20,6 +20,7 @@ into cards so structured content is never re-parsed into junk cards downstream.
 import json
 import logging
 import os
+import random
 import re
 import urllib.error
 import urllib.parse
@@ -224,6 +225,35 @@ def _clean_str(s):
     return s.strip()
 
 
+def _strip_trailing_note(s):
+    """Remove a balanced trailing parenthetical explanation from an answer.
+
+    Handles nesting: "26 cm (2 * (8 + 5) = 26)" -> "26 cm",
+    "x = 14 (23 - 9 = 14)" -> "x = 14", "A chef (or a cook)" -> "A chef".
+    Returns the stripped string.
+    """
+    s = (s or "").rstrip()
+    if not s.endswith(")"):
+        return s
+    depth = 0
+    i = len(s) - 1
+    start = None
+    while i >= 0:
+        c = s[i]
+        if c == ")":
+            depth += 1
+        elif c == "(":
+            depth -= 1
+            if depth == 0:
+                start = i
+                break
+        i -= 1
+    if start is None:
+        return s
+    core = s[:start].strip()
+    return core if core else s
+
+
 def _is_heading(line):
     return bool(_TITLE.match(line.strip()))
 
@@ -365,13 +395,18 @@ def _is_question_line(ln):
     """True if a line is a real test question rather than an instruction/section.
 
     A question either has a fill-in-the-blank run of underscores, ends with a
-    question mark, or is a quoted sentence ("...").
+    question mark, is a quoted sentence ("..."), or is a math/computational
+    question that starts with a command word and contains a number or operator
+    (e.g. "Calculate 84 - 39.", "Solve for x: x + 9 = 23.").
     """
     if re.search(r"_{3,}", ln):
         return True
     if ln.rstrip().endswith("?"):
         return True
     if ln.startswith('"') and ln.rstrip().endswith('"'):
+        return True
+    if (re.match(r"^\s*(?:calculate|solve|divide|evaluate|find|simplify|multiply|convert|compute|determine)\b", ln, re.I)
+            and re.search(r"[\d=+*/×%^]", ln)):
         return True
     return False
 
@@ -425,10 +460,22 @@ def _parse_test_qa(text):
     for (qidx, qtext), (aidx, atext) in zip(q_items, a_items):
         q = _clean_str(qtext)
         a = _clean_str(atext)
+        # Drop a trailing (possibly nested) parenthetical explanation so the
+        # card back stays concise: "x = 14 (23 - 9 = 14)" -> "x = 14".
+        a = _strip_trailing_note(a)
         if q and a and q.lower() != a.lower():
             pairs.append((q, a))
             used.add(qidx)
             used.add(aidx)
+    # Mark the whole test block (from the first question to the last answer) as
+    # used, so leftover lines aren't re-parsed into junk prose cards downstream.
+    if pairs:
+        n = min(len(q_items), len(a_items))
+        lo = q_items[0][0]
+        hi = a_items[n - 1][0] if n else q_items[0][0]
+        for orig_idx, _ln in lines:
+            if lo <= orig_idx <= hi:
+                used.add(orig_idx)
     return pairs, used
 
 
@@ -556,6 +603,15 @@ def _build_card_from_pair(front, back, style):
     if not front or not back:
         return None
 
+    # Question/command openers that already form a complete prompt and should
+    # NOT be wrapped in "What is ..." (e.g. "Calculate 84 - 39.", "Solve for
+    # x: ...", "Find the area of ...").
+    _Q_OPENERS = ("what", "how", "why", "which", "where", "who", "when",
+                  "describe", "explain", "calculate", "solve", "divide",
+                  "evaluate", "find", "simplify", "multiply", "convert",
+                  "compute", "determine", "identify", "state", "name",
+                  "list", "give", "write", "define", "rewrite", "match")
+
     if style == "term":
         if front.endswith("?") or front.lower().startswith("what is "):
             # Invert question to term style if simple
@@ -570,14 +626,14 @@ def _build_card_from_pair(front, back, style):
         # Never wrap an already-formed cloze front in "What is ..."
         if "______" in front:
             return {"front": front, "back": back}
-        if front.endswith("?") or '"' in front:
+        if front.endswith("?") or front.lower().startswith(_Q_OPENERS) or '"' in front:
             return {"front": front, "back": back}
         return {"front": f"What is {front}?", "back": back}
     else:  # q&a default
         # Never wrap an already-formed cloze front in "What is ..."
         if "______" in front:
             return {"front": front, "back": back}
-        if not front.endswith("?") and not front.lower().startswith(("what", "how", "why", "which", "where", "who", "when", "describe", "explain")) and '"' not in front:
+        if not front.endswith("?") and not front.lower().startswith(_Q_OPENERS) and '"' not in front:
             return {"front": f"What is {front}?", "back": back}
         return {"front": front, "back": back}
 
@@ -775,3 +831,145 @@ def generate(notes, subject="Other", difficulty="Medium", number=5, style="q&a")
                 card["back"] = d
 
     return cards[:number]
+
+
+# ===========================================================================
+# 5. Quiz generation (multiple-choice quizzes for the Quizzes section)
+# ===========================================================================
+
+# Fallback curated bank (used when Gemini is not configured/available).
+_QUIZ_BANK = {
+    "English": [
+        {"question": "What is the opposite (antonym) of \"difficult\"?",
+         "options": ["easy", "hard", "tall", "heavy"], "answer": "easy"},
+        {"question": "What is the plural form of the noun \"child\"?",
+         "options": ["childs", "children", "childes", "childrens"], "answer": "children"},
+        {"question": "Which word is a verb?",
+         "options": ["run", "easily", "slowly", "happy"], "answer": "run"},
+        {"question": "Which sentence is correct?",
+         "options": ["He don't like reading.", "He doesn't like reading.",
+                      "He not like reading.", "He doesn't likes reading."],
+         "answer": "He doesn't like reading."},
+        {"question": "Fill in the blank: \"She ____ her keys yesterday.\"",
+         "options": ["lose", "lost", "losing", "losted"], "answer": "lost"},
+        {"question": "What is a synonym of \"happy\"?",
+         "options": ["sad", "joyful", "angry", "tired"], "answer": "joyful"},
+        {"question": "Which word is a noun?",
+         "options": ["quickly", "dog", "run", "and"], "answer": "dog"},
+        {"question": "Choose the correct spelling:",
+         "options": ["receive", "recieve", "receve", "receeve"], "answer": "receive"},
+    ],
+    "Math": [
+        {"question": "What is 12 + 28?", "options": ["40", "42", "50", "38"], "answer": "40"},
+        {"question": "What is 7 × 8?", "options": ["54", "48", "56", "64"], "answer": "56"},
+        {"question": "What is 144 ÷ 12?", "options": ["10", "11", "12", "14"], "answer": "12"},
+        {"question": "Solve for x: x + 9 = 23.", "options": ["14", "32", "13", "15"], "answer": "14"},
+        {"question": "What is 3 squared (3²)?", "options": ["6", "9", "8", "12"], "answer": "9"},
+        {"question": "What is the square root of 64?", "options": ["6", "8", "7", "9"], "answer": "8"},
+        {"question": "Simplify the fraction 12/9.", "options": ["2/3", "3/4", "5/6", "1/2"], "answer": "2/3"},
+        {"question": "What is 15% of 80?", "options": ["10", "12", "15", "8"], "answer": "12"},
+    ],
+    "Science": [
+        {"question": "Which organ pumps blood through the body?",
+         "options": ["lungs", "heart", "liver", "kidney"], "answer": "heart"},
+        {"question": "What gas do plants take in during photosynthesis?",
+         "options": ["water", "carbon dioxide", "nitrogen", "hydrogen"], "answer": "carbon dioxide"},
+        {"question": "What is the powerhouse of the cell?",
+         "options": ["nucleus", "mitochondria", "ribosome", "membrane"], "answer": "mitochondria"},
+        {"question": "Which planet is known as the Red Planet?",
+         "options": ["Venus", "Mars", "Jupiter", "Saturn"], "answer": "Mars"},
+        {"question": "What is the chemical formula for water?",
+         "options": ["O2", "CO2", "H2O", "NaCl"], "answer": "H2O"},
+        {"question": "Which force pulls objects toward the ground?",
+         "options": ["magnetism", "gravity", "friction", "tension"], "answer": "gravity"},
+        {"question": "What gas do plants release during photosynthesis?",
+         "options": ["carbon dioxide", "oxygen", "nitrogen", "methane"], "answer": "oxygen"},
+        {"question": "Which of these is a solid at room temperature?",
+         "options": ["ice", "water", "steam", "oxygen"], "answer": "ice"},
+    ],
+}
+
+
+def _generate_quiz_with_gemini(subject, topic, number, api_key=None):
+    """Use Gemini to build a multiple-choice quiz.
+
+    Returns a list of {question, options, answer} or None on failure / missing key.
+    """
+    key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not key:
+        return None
+    model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+    prompt = (
+        f"You are an expert educator. Build a multiple-choice quiz for a {subject} student.\n"
+        f"Topic: {topic or ('general ' + subject)}\n"
+        f"Generate exactly {number} questions. Each question must have exactly 4 answer options "
+        f"and one marked correct.\n"
+        f"Return ONLY a valid JSON object with a key \"questions\" whose value is an array of "
+        f"objects with keys \"question\", \"options\" (array of 4 strings), and \"answer\" "
+        f"(the correct option text, which must be one of the options).\n"
+        f"Rules: every fact must be correct for {subject}; order the 4 options randomly "
+        f"(never always put the answer last); keep it clear and age-appropriate.\n"
+        f"Example: {{\"questions\":[{{\"question\":\"What is 2+3?\","
+        f"\"options\":[\"4\",\"5\",\"6\",\"7\"],\"answer\":\"5\"}}]}}"
+    )
+    request_body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 4096,
+                             "responseMimeType": "application/json"},
+    }
+    try:
+        data_bytes = json.dumps(request_body).encode("utf-8")
+        req = urllib.request.Request(url, data=data_bytes,
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+        candidates = result.get("candidates", [])
+        if not candidates:
+            return None
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if not parts:
+            return None
+        raw = parts[0].get("text", "").strip()
+        if raw.startswith("```"):
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw).strip()
+        data = json.loads(raw)
+        questions = data.get("questions", [])
+        out = []
+        for q in questions:
+            if not isinstance(q, dict):
+                continue
+            question = str(q.get("question", "")).strip()
+            options = [str(o).strip() for o in q.get("options", []) if str(o).strip()]
+            answer = str(q.get("answer", "")).strip()
+            if question and len(options) >= 4 and answer in options:
+                out.append({"question": question, "options": options[:4], "answer": answer})
+            if len(out) >= number:
+                break
+        return out[:number] if out else None
+    except Exception as exc:
+        logger.warning("Gemini quiz generation fallback to bank: %s", exc)
+        return None
+
+
+def generate_quiz(subject="Science", topic="", number=5):
+    """Build a multiple-choice quiz.
+
+    Tries the Gemini engine first (up to ~45s), then falls back to a curated
+    built-in bank per subject. Returns a list of {question, options, answer}.
+    """
+    subject = (subject or "Science").strip()
+    try:
+        number = max(3, min(int(number), 10))
+    except (ValueError, TypeError):
+        number = 5
+
+    llm_quiz = _generate_quiz_with_gemini(subject, topic, number)
+    if llm_quiz:
+        return llm_quiz
+
+    bank = _QUIZ_BANK.get(subject) or _QUIZ_BANK.get(subject.capitalize()) or _QUIZ_BANK.get("Science")
+    bank = list(bank)
+    random.shuffle(bank)
+    return [dict(q) for q in bank[:min(number, len(bank))]]

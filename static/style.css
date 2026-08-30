@@ -373,6 +373,17 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .quiz-feedback.right { display: block; background: var(--ok-bg); color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent); }
 .quiz-feedback.wrong { display: block; background: var(--error-bg); color: var(--error-text); border: 1px solid color-mix(in srgb, var(--error-text) 25%, transparent); }
 
+/* quiz sessions (Quizzes hub): selected option + end review */
+.quiz-opt.picked { border-color: var(--brand); background: var(--brand-soft); box-shadow: inset 0 0 0 1.5px var(--brand); }
+.qz-review-list { display: flex; flex-direction: column; gap: 10px; max-width: 640px; margin: 0 auto; }
+.qz-review { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+.qz-review.right { border-color: color-mix(in srgb, var(--ok) 40%, transparent); background: var(--ok-bg); }
+.qz-review.wrong { border-color: color-mix(in srgb, var(--error-text) 35%, transparent); background: var(--error-bg); }
+.qz-review .qr-q { font-weight: 700; font-size: 14px; }
+.qz-review .qr-a { font-size: 13px; color: var(--text-soft); margin-top: 4px; }
+.range-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+.field-hint { font-size: 12.5px; color: var(--text-faint); margin-top: 10px; }
+
 /* ---------- import deck modal ---------- */
 .imp-formats { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px;
   padding: 12px 14px; font-size: 13px; color: var(--text-soft); margin-bottom: 16px; line-height: 1.6; }

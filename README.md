@@ -11,7 +11,9 @@
 - **Card editor** — edit, add, delete, and regenerate individual cards.
 - **Study mode** — one card at a time with a smooth 3D flip, self-rated verdicts (Didn't Know / Almost / Knew It), a summary (accuracy, study time, cards needing practice), and an optional **shuffle toggle** so you don't just memorize the order.
 - **Quiz mode** — test yourself with multiple-choice questions (answers pulled from your own deck), with instant feedback and a final score.
+- **Quizzes section** — a dedicated **Quizzes** page to **create an AI quiz** on English, Math, or Science (score revealed only at the end), or turn any of your decks into a quiz.
 - **Import decks** — paste terms from Anki/Quizlet exports (or `Term: Definition` / `Term — Definition` lines) and turn them into a deck instantly.
+- **Deck-by-deck review** — the "To review" dashboard card lists your weak cards grouped by deck, so you choose which deck to refresh first.
 - **Progress** — per-deck progress bars, plus a statistics page with daily study time, cards reviewed, accuracy, and study streak.
 - **Polish** — light/dark mode, responsive layout, page transitions, toasts, confirm dialogs, and empty states.
 

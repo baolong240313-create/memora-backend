@@ -1,9 +1,41 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **12.6.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **13.0.0**.
 
-## [12.6.0] - current
+## [13.0.0] - current
+
+### Added
+- **Quizzes section.** A brand-new **Quizzes** page in the nav. Two ways to play:
+  - **Create an AI quiz** — pick a subject (English / Math / Science) and an
+    optional topic, choose how many questions, and Memora's AI writes a
+    multiple-choice quiz. Scores are revealed **only when you finish** — no
+    instant hints, and no "review weak questions" in this section. Generation
+    can take up to ~45 seconds (AI engine first, curated offline bank as
+    fallback).
+  - **Turn a deck into a quiz** — pick any deck from your library and play it as
+    a multiple-choice quiz. Wrong options are drawn from the deck's other cards.
+
+### Changed
+- **"To review" on the dashboard now groups weak cards by deck.** Instead of
+  diving straight into a mix of every weak card, it opens a **Review** page that
+  lists each deck with its weak-card count and lets you choose which deck to
+  review first (with an optional "Review All Decks" button on top).
+- **Import is self-healing.** The Import modal is now built in JavaScript too, so
+  Import works even if the page served a stale HTML. Header rows (e.g.
+  `Term⇥Definition`) are also skipped correctly.
+
+### Fixed
+- **Flashcard AI no longer wraps every question in "What is …".** Command
+  questions like `Calculate 84 - 39.`, `Solve for x: …`, `Divide 144 / 12.`,
+  `Find the area of …` are kept as-is. Math questions that end in a period are
+  now recognized as questions too.
+- **Test/worksheet answers are cleaner.** Parenthetical explanations in the
+  Answer Key are stripped from the card back (e.g. "x = 14 (23 - 9 = 14)" →
+  "x = 14"), and the whole test block is consumed so no junk cards are produced
+  from leftover lines.
+
+## [12.6.0] - previous
 
 ### Added
 - **Import decks from Anki/Quizlet.** The My Decks page now has an **Import**

@@ -69,7 +69,7 @@
   function renderNav() {
     const links = $("#navLinks");
     links.innerHTML = state.user
-      ? `<a href="#/dashboard">Dashboard</a><a href="#/generator">Create</a><a href="#/library">My Decks</a><a href="#/stats">Stats</a>`
+      ? `<a href="#/dashboard">Dashboard</a><a href="#/generator">Create</a><a href="#/library">My Decks</a><a href="#/quizzes">Quizzes</a><a href="#/stats">Stats</a>`
       : `<a href="#/generator">Create Flashcards</a>`;
     $$("#navLinks a").forEach(a => { a.classList.toggle("active", location.hash.startsWith(a.getAttribute("href"))); });
     const nu = $("#navUser");
@@ -120,6 +120,8 @@
       if (h === "#/stats") return renderStats();
       if (h.startsWith("#/deck/")) return renderDeck(+h.split("/")[2]);
       if (h.startsWith("#/study/")) return renderStudy(+h.split("/")[2]);
+      if (h === "#/review") return renderReview();
+      if (h === "#/quizzes") return renderQuizzes();
       return renderDashboard();
     }
     // guest / signed-out
@@ -330,8 +332,8 @@
     for (let line of lines) {
       line = line.trim();
       if (!line) continue;
-      // Skip obvious header rows (e.g. "Term\tDefinition")
-      if (/^(term|front|question|concept)\s*[#:t]\s*(definition|answer|back|meaning)$/i.test(line)) continue;
+      // Skip obvious header rows (e.g. "Term⇥Definition").
+      if (/^(term|front|question|concept)\s*[:>\t]\s*(definition|answer|back|meaning)$/i.test(line)) continue;
       let front = "", back = "";
       if (line.indexOf("\t") !== -1) {
         const parts = line.split("\t");
@@ -353,7 +355,32 @@
     }
     return cards;
   }
+  // Make sure the import modal exists (it normally lives in index.html, but we
+  // build it from JS too so Import always works even if a stale page is loaded).
+  function ensureImportModal() {
+    if ($("#importModal")) return;
+    const wrap = document.createElement("div");
+    wrap.className = "modal-overlay hidden";
+    wrap.id = "importModal";
+    wrap.innerHTML =
+      `<div class="modal modal-wide">
+        <button class="close" id="importClose">✕</button>
+        <h2>Import a deck</h2>
+        <p class="m-sub">Paste your cards below — one per line — and Memora will turn them into a deck.</p>
+        <div class="imp-formats"><b>Supported formats</b>
+          <div>Term&nbsp;⇥&nbsp;Definition &nbsp;(tab, like Anki/Quizlet export)</div>
+          <div>Term: Definition &nbsp;·&nbsp; Term — Definition &nbsp;·&nbsp; Term, Definition</div></div>
+        <div class="field"><label>Deck name</label><input type="text" id="impName" placeholder="e.g. Biology — Cells" /></div>
+        <div class="field"><label>Your cards</label><textarea id="impText" placeholder="Mitochondria\tThe powerhouse of the cell\nPhotosynthesis\tTurns sunlight into chemical energy"></textarea>
+          <div class="char-count" id="impCount">0 cards</div></div>
+        <div class="error" id="impError"></div>
+        <button class="btn btn-primary btn-block btn-lg" id="impCreateBtn">📥 Create deck</button>
+      </div>`;
+    document.body.appendChild(wrap);
+    initImport();
+  }
   function openImport() {
+    ensureImportModal();
     $("#impName").value = "";
     $("#impText").value = "";
     const err = $("#impError"); err.style.display = "none";
@@ -383,10 +410,13 @@
     navigate("#/deck/" + data.deck.id);
   }
   function initImport() {
-    $("#importClose").onclick = () => $("#importModal").classList.add("hidden");
-    $("#importModal").addEventListener("click", e => { if (e.target.id === "importModal") $("#importModal").classList.add("hidden"); });
-    $("#impText").addEventListener("input", updateImpCount);
-    $("#impCreateBtn").onclick = createImportDeck;
+    const close = $("#importClose"), modal = $("#importModal"),
+          text = $("#impText"), create = $("#impCreateBtn");
+    if (!modal) return;
+    if (close) close.onclick = () => modal.classList.add("hidden");
+    modal.addEventListener("click", e => { if (e.target.id === "importModal") modal.classList.add("hidden"); });
+    if (text) text.addEventListener("input", updateImpCount);
+    if (create) create.onclick = createImportDeck;
   }
 
   /* ================= PARTICLES ================= */
@@ -866,7 +896,7 @@
         <button class="stat link" onclick="location.hash='#/library'"><div class="label">Total cards</div><div class="value">${st.total_cards || 0}</div><div class="sub">across all your decks</div></button>
         <button class="stat link" onclick="location.hash='#/stats'"><div class="label">Cards reviewed</div><div class="value">${st.cards_reviewed || 0}</div><div class="sub">since you started</div></button>
         <button class="stat link" onclick="location.hash='#/stats'"><div class="label">Study streak</div><div class="value">🔥 ${st.study_streak || 0}</div><div class="sub">consecutive days</div></button>
-        <button class="stat link" onclick="App.smartReviewAll()"><div class="label">To review</div><div class="value">🎯 ${weakTotal}</div><div class="sub">weak cards to refresh</div></button>
+        <button class="stat link" onclick="location.hash='#/review'"><div class="label">To review</div><div class="value">🎯 ${weakTotal}</div><div class="sub">weak cards by deck</div></button>
       </div>
       ${decks.length ? deckGridHtml(show, "Your study corner", true) : emptyState()}`;
   }
@@ -897,6 +927,42 @@
   async function toggleFav(id, on) {
     await api("/decks/" + id, { method: "PATCH", body: { favorite: !!on } });
     route();
+  }
+
+  /* ================= REVIEW (weak cards, by deck) ================= */
+  async function renderReview() {
+    const { data } = await api("/decks");
+    const decks = data.decks || [];
+    const rows = [];
+    let totalWeak = 0;
+    for (const d of decks) {
+      const weak = (d.card_count || 0) - (d.mastered_count || 0);
+      if (weak > 0) { rows.push({ deck: d, weak }); totalWeak += weak; }
+    }
+    if (!rows.length) {
+      app.innerHTML = `<div class="empty view"><div class="em">🎉</div><h3>All caught up!</h3><p>No weak cards to review right now. Great studying!</p><button class="btn btn-primary btn-lg" onclick="location.hash='#/dashboard'">Back to Dashboard</button></div>`;
+      return;
+    }
+    app.innerHTML = `
+      <div class="page-head"><h1>Review</h1><div class="spacer"></div>
+        <button class="btn btn-primary btn-lg" onclick="App.smartReviewAll()">🧠 Review All Decks</button></div>
+      <div class="view">
+        <p class="section-sub" style="margin-bottom:20px">${totalWeak} weak card${totalWeak > 1 ? "s" : ""} across ${rows.length} deck${rows.length > 1 ? "s" : ""}. Pick a deck to review first — its weak cards are shuffled.</p>
+        <div class="section-title" style="margin-top:0">Choose a deck</div>
+        <div class="grid-decks">${rows.map(r => reviewDeckCard(r.deck, r.weak)).join("")}</div>
+      </div>`;
+  }
+  function reviewDeckCard(d, weak) {
+    return `
+      <div class="deck">
+        <div class="deck-emoji">${deckEmoji(d.subject)}</div>
+        <div class="deck-subject">${escapeHtml(d.subject)}</div>
+        <h3>${escapeHtml(d.name)}</h3>
+        <div class="meta">${weak} weak card${weak > 1 ? "s" : ""} to review · ${d.card_count || 0} total</div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="btn btn-primary" onclick="App.practiceWeak(${d.id})">▶ Review ${weak}</button>
+        </div>
+      </div>`;
   }
 
   /* ================= LIBRARY ================= */
@@ -1494,6 +1560,174 @@
     show();
   }
 
+  /* ================= QUIZZES hub ================= */
+  function renderQuizzes() {
+    if (cleanupStudyMode) { cleanupStudyMode(); cleanupStudyMode = null; }
+    app.innerHTML = `
+      <div class="page-head"><h1>Quizzes</h1><div class="spacer"></div></div>
+      <div class="view" style="max-width:800px;margin:0 auto">
+        <div class="panel">
+          <div class="section-title" style="margin-top:0">🧠 Create an AI quiz</div>
+          <p class="section-sub">Memora's AI writes a fresh multiple-choice quiz on your subject. Your score is revealed only when you finish — no hints along the way.</p>
+          <div class="field"><label>Subject</label>
+            <div class="chips" id="qzSubject">${["English", "Math", "Science"].map(s => `<button class="chip${s === "Science" ? " active" : ""}" data-s="${s}">${s}</button>`).join("")}</div>
+          </div>
+          <div class="field"><label>Topic <span class="hint">(optional)</span></label>
+            <input type="text" id="qzTopic" placeholder="e.g. Fractions, Cells, Grammar" /></div>
+          <div class="field"><label>Number of questions · <span class="range-val" id="qzNumVal">5</span></label>
+            <input type="range" id="qzNum" min="3" max="10" step="1" value="5" />
+            <div class="range-scale"><span>3</span><span>6</span><span>10</span></div></div>
+          <button class="btn btn-primary btn-lg btn-block" id="qzCreateBtn">✨ Generate Quiz</button>
+          <div class="field-hint">The AI can take up to 45 seconds to craft your questions. You can make about one new quiz per minute.</div>
+        </div>
+        <div class="panel" style="margin-top:18px">
+          <div class="section-title" style="margin-top:0">📚 Turn a deck into a quiz</div>
+          <p class="section-sub">Pick one of your flashcard decks to play as a quiz.</p>
+          <div id="qzDecks">${loaderHtml("Loading your decks…")}</div>
+        </div>
+        <div id="qzOut"></div>
+      </div>`;
+    let subject = "Science";
+    chipBind("#qzSubject", "data-s", v => subject = v);
+    const num = $("#qzNum");
+    if (num) num.addEventListener("input", e => { const t = $("#qzNumVal"); if (t) t.textContent = e.target.value; });
+    const btn = $("#qzCreateBtn");
+    if (btn) btn.onclick = () => createAiQuiz(subject, $("#qzTopic").value.trim(), +num.value);
+    loadDecksForQuiz();
+  }
+
+  async function loadDecksForQuiz() {
+    const wrap = $("#qzDecks"); if (!wrap) return;
+    const { data } = await api("/decks");
+    const decks = data.decks || [];
+    if (!decks.length) { wrap.innerHTML = `<div class="empty" style="padding:24px"><h3>No decks yet</h3><p>Create some flashcards first, then turn one into a quiz.</p></div>`; return; }
+    wrap.innerHTML = `<div class="grid-decks">${decks.map(d => `
+      <div class="deck">
+        <div class="deck-emoji">${deckEmoji(d.subject)}</div>
+        <div class="deck-subject">${escapeHtml(d.subject)}</div>
+        <h3>${escapeHtml(d.name)}</h3>
+        <div class="meta">${d.card_count || 0} cards</div>
+        <button class="btn btn-primary btn-block" onclick="App.quizDeckAsQuiz(${d.id})">▶ Start Quiz</button>
+      </div>`).join("")}</div>`;
+  }
+
+  async function createAiQuiz(subject, topic, number) {
+    const out = $("#qzOut"); if (!out) return;
+    out.innerHTML = loaderHtml("🧠 The AI is searching for quiz questions… (up to 45s)");
+    const { ok, data } = await api("/quiz/generate", { method: "POST", body: { subject, topic, number } });
+    if (!ok) { out.innerHTML = `<div class="empty"><div class="em">😕</div><h3>Couldn't create the quiz</h3><p>${escapeHtml(data.error || "Please try again.")}</p></div>`; return; }
+    const quiz = data.quiz || [];
+    if (!quiz.length) { out.innerHTML = `<div class="empty"><div class="em">🤔</div><h3>No questions came back</h3><p>Try again in a moment.</p></div>`; return; }
+    out.innerHTML = "";
+    startQuizSession(quiz, `${data.subject} quiz${topic ? " · " + topic : ""}`);
+  }
+
+  // Turn a library deck into a multiple-choice quiz session.
+  async function quizDeckAsQuiz(deckId) {
+    const { ok, data } = await api("/decks/" + deckId);
+    if (!ok || !data.deck || !data.deck.cards.length) { toast("That deck has no cards yet.", "error"); return; }
+    const cards = data.deck.cards;
+    const questions = cards.map((c, idx) => {
+      const opts = quizOptions(cards, idx);
+      return { question: c.front, options: opts.map(o => o.text), answer: opts.find(o => o.correct).text };
+    });
+    startQuizSession(questions, data.deck.name + " quiz");
+  }
+
+  function startQuizSession(questions, title) {
+    if (cleanupStudyMode) { cleanupStudyMode(); cleanupStudyMode = null; }
+    app.innerHTML = `
+      <div class="page-head">
+        <a class="breadcrumb" href="#/quizzes" onclick="App.leaveStudy('#/quizzes');return false;">← Quizzes</a>
+        <div class="spacer"></div>
+        <div class="muted" style="font-weight:600" id="zsCounter">Question 1 of ${questions.length}</div>
+      </div>
+      <div class="study-area view">
+        <div class="study-progress" id="zsProg"></div>
+        <div class="quiz-card"><div class="hint">${escapeHtml(title)}</div><div class="quiz-q" id="zsQ"></div></div>
+        <div class="quiz-options" id="zsOpts"></div>
+        <button class="btn btn-primary btn-lg hidden" id="zsNext">Next →</button>
+        <div style="margin-top:20px;color:var(--text-faint);font-size:12.5px;display:flex;gap:18px;justify-content:center">
+          <span><kbd class="k-hint">1</kbd>–<kbd class="k-hint">4</kbd> Pick an answer</span>
+          <span><kbd class="k-hint">Enter</kbd> Next</span>
+        </div>
+      </div>`;
+    runQuizSession(questions, title);
+  }
+
+  function runQuizSession(questions, title) {
+    let i = 0, correct = 0;
+    const picked = [];
+    let answered = false;
+    const q = $("#zsQ"), opts = $("#zsOpts"), prog = $("#zsProg"), counter = $("#zsCounter"), next = $("#zsNext");
+
+    function paintProg() {
+      prog.innerHTML = questions.map((c, idx) =>
+        `<i class="${idx < i ? (picked[idx] === c.answer ? "correct" : "wrong") : (idx === i ? "done" : "")}"></i>`
+      ).join("");
+      counter.textContent = `Question ${Math.min(i + 1, questions.length)} of ${questions.length}`;
+    }
+    function show() {
+      answered = false;
+      next.classList.add("hidden");
+      const qu = questions[i];
+      q.textContent = qu.question;
+      const shuffled = shuffle(qu.options.map((t, idx) => ({ t, idx })));
+      opts.innerHTML = shuffled.map((o, k) =>
+        `<button class="quiz-opt" data-idx="${o.idx}"><span class="k">${k + 1}</span><span>${escapeHtml(o.t)}</span></button>`
+      ).join("");
+      opts.querySelectorAll(".quiz-opt").forEach(b => b.onclick = () => pick(b));
+      paintProg();
+    }
+    function pick(btn) {
+      if (answered) return;
+      answered = true;
+      opts.querySelectorAll(".quiz-opt").forEach(b => b.classList.remove("picked"));
+      btn.classList.add("picked");
+      picked[i] = questions[i].options[+btn.getAttribute("data-idx")];
+      if (picked[i] === questions[i].answer) correct++;
+      next.classList.remove("hidden");
+    }
+    next.onclick = () => { i++; if (i >= questions.length) return finish(); show(); };
+    function onKey(e) {
+      const tag = e.target && e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (!$("#authModal").classList.contains("hidden") || !$("#confirmModal").classList.contains("hidden")) return;
+      if (!answered && /^[1-4]$/.test(e.key)) {
+        const bs = opts.querySelectorAll(".quiz-opt"); const n = +e.key - 1;
+        if (bs[n]) { e.preventDefault(); pick(bs[n]); }
+      } else if ((e.key === "Enter" || e.key === " ") && answered) { e.preventDefault(); next.onclick(); }
+    }
+    window.addEventListener("keydown", onKey);
+    cleanupStudyMode = () => window.removeEventListener("keydown", onKey);
+
+    function finish() {
+      if (cleanupStudyMode) { cleanupStudyMode(); cleanupStudyMode = null; }
+      const acc = Math.round(100 * correct / questions.length);
+      const banner = questions.map((qu, idx) => {
+        const user = picked[idx]; const right = user === qu.answer;
+        return `<div class="qz-review ${right ? "right" : "wrong"}">
+          <div class="qr-q">${escapeHtml(qu.question)}</div>
+          <div class="qr-a">Your answer: <b>${escapeHtml(user ?? "—")}</b> · Correct: <b>${escapeHtml(qu.answer)}</b> ${right ? "✅" : "❌"}</div>
+        </div>`;
+      }).join("");
+      app.innerHTML = `<div class="study-area view"><div class="result">
+        <div class="big">${acc === 100 ? "🏆" : "🎉"}</div>
+        <h2>Quiz Complete!</h2>
+        <p class="sub">You answered ${questions.length} question${questions.length > 1 ? "s" : ""}.</p>
+        <div class="result-grid">
+          <div class="rg"><div class="v">${questions.length}</div><div class="l">Questions</div></div>
+          <div class="rg"><div class="v">${correct}</div><div class="l">Correct</div></div>
+          <div class="rg"><div class="v">${acc}%</div><div class="l">Score</div></div>
+        </div>
+        <div style="margin:24px 0;text-align:left" class="qz-review-list">${banner}</div>
+        <div style="margin-top:18px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-primary btn-lg" onclick="location.hash='#/quizzes'">Back to Quizzes</button>
+        </div></div></div>`;
+    }
+    show();
+  }
+
   /* ================= STATS ================= */
   async function renderStats() {
     const { data } = await api("/stats");
@@ -1562,6 +1796,7 @@
     openImport,
     createImportDeck,
     quizDeck,
+    quizDeckAsQuiz,
     studyAgain: renderStudy,
     practiceWeak,
     practiceMissed,
