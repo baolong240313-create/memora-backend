@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Memora — Turn your notes into flashcards</title>
+  <meta name="description" content="Memora turns your study notes into interactive flashcards automatically. Study smarter with AI-powered decks, study modes, and progress tracking." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🧠</text></svg>" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="nav" id="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#/dashboard"><span class="logo">🧠</span>Memora</a>
+      <div class="nav-links" id="navLinks"></div>
+      <div class="nav-spacer"></div>
+      <button class="icon-btn" id="themeToggle" title="Toggle theme">🌙</button>
+      <div id="navUser"></div>
+    </div>
+  </nav>
+
+  <!-- Views render here -->
+  <main id="app" class="wrap"></main>
+
+  <footer>Built for students · Memora · <span id="appVersion"></span> · <a href="#" id="changelogLink">Changelog</a></footer>
+
+  <!-- Changelog modal -->
+  <div class="modal-overlay hidden" id="changelogModal">
+    <div class="modal modal-wide">
+      <button class="close" id="changelogClose">✕</button>
+      <h2>Changelog</h2>
+      <div class="m-sub" id="changelogBody" style="white-space:pre-wrap;text-align:left;max-height:60vh;overflow:auto"></div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+
+  <!-- Auth modal -->
+  <div class="modal-overlay hidden" id="authModal">
+    <div class="modal">
+      <button class="close" id="authClose">✕</button>
+      <h2 id="authTitle">Welcome back</h2>
+      <p class="m-sub" id="authSub">Sign in to keep studying.</p>
+      <div class="auth-tabs">
+        <button id="tabLogin" class="active">Sign In</button>
+        <button id="tabSignup">Create Account</button>
+      </div>
+      <div class="error" id="authError"></div>
+      <div class="free-note hidden" id="authFreeNote">🎉 <span>Your first flashcard is ready! Create an account to keep your decks and unlock full generation.</span></div>
+      <div class="google-auth hidden" id="googleAuth">
+        <div class="google-btn" id="googleButton"></div>
+        <div class="or-divider"><span>or continue with email</span></div>
+      </div>
+      <form id="authForm">
+        <div class="field hidden" id="nameField"><label>Your name</label><input type="text" id="authName" placeholder="Alex" /></div>
+        <div class="field"><label>Email</label><input type="email" id="authEmail" placeholder="you@school.edu" /></div>
+        <div class="field"><label>Password</label><input type="password" id="authPass" placeholder="••••••••" /></div>
+        <button class="btn btn-primary btn-block btn-lg" type="submit" id="authSubmit">Sign In</button>
+        <button type="button" class="link-btn" id="forgotLink">Forgot password?</button>
+      </form>
+
+      <!-- Password reset flow (email verification code) -->
+      <div class="reset hidden" id="resetPanel">
+        <div class="field"><label>Email</label><input type="email" id="resetEmail" placeholder="you@school.edu" /></div>
+        <div class="field" id="resetCodeField" style="display:none"><label>Verification code</label><input type="text" id="resetCode" placeholder="6-digit code" /></div>
+        <div class="field" id="resetNewField" style="display:none"><label>New password</label><input type="password" id="resetNewPass" placeholder="••••••••" /></div>
+        <button class="btn btn-primary btn-block" type="button" id="resetSendBtn">Send code to email</button>
+        <button class="btn btn-primary btn-block hidden" type="button" id="resetSubmitBtn">Reset password</button>
+        <button type="button" class="link-btn" id="resetBackLink">← Back to sign in</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Confirm modal -->
+  <div class="modal-overlay hidden" id="confirmModal">
+    <div class="modal">
+      <h2 id="confirmTitle">Are you sure?</h2>
+      <p class="m-sub" id="confirmMsg">This action cannot be undone.</p>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-block" id="confirmCancel">Cancel</button>
+        <button class="btn btn-danger btn-block" id="confirmOk">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
