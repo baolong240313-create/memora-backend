@@ -25,7 +25,7 @@ import generator
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "13.0.0"
+APP_VERSION = "13.1.0"
 
 
 def _load_dotenv():

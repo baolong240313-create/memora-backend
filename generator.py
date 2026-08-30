@@ -953,11 +953,128 @@ def _generate_quiz_with_gemini(subject, topic, number, api_key=None):
         return None
 
 
+# Topic-specific banks so an offline quiz still honors the chosen topic
+# (e.g. Science + "photosynthesis" returns photosynthesis questions).
+_QUIZ_TOPICS = {
+    "photosynthesis": {"subject": "Science", "questions": [
+        {"question": "What is the main purpose of photosynthesis in plants?",
+         "options": ["to turn sunlight into glucose and oxygen", "to absorb water from roots",
+                      "to release heat", "to digest food"],
+         "answer": "to turn sunlight into glucose and oxygen"},
+        {"question": "Which organelle in plant cells carries out photosynthesis?",
+         "options": ["mitochondria", "chloroplast", "nucleus", "ribosome"], "answer": "chloroplast"},
+        {"question": "What gas do plants absorb during photosynthesis?",
+         "options": ["oxygen", "carbon dioxide", "nitrogen", "hydrogen"], "answer": "carbon dioxide"},
+        {"question": "What gas do plants release as a byproduct of photosynthesis?",
+         "options": ["carbon dioxide", "oxygen", "nitrogen", "helium"], "answer": "oxygen"},
+        {"question": "What is the main energy source that drives photosynthesis?",
+         "options": ["sunlight", "heat", "water", "soil minerals"], "answer": "sunlight"},
+        {"question": "What main product does photosynthesis create for the plant to store energy?",
+         "options": ["protein", "glucose", "salt", "carbon"], "answer": "glucose"},
+    ]},
+    "cells": {"subject": "Science", "questions": [
+        {"question": "What is the basic unit of life?",
+         "options": ["atom", "cell", "organ", "tissue"], "answer": "cell"},
+        {"question": "What is the 'powerhouse of the cell'?",
+         "options": ["nucleus", "mitochondria", "chloroplast", "cell wall"], "answer": "mitochondria"},
+        {"question": "Where is the cell's genetic material (DNA) stored?",
+         "options": ["nucleus", "cytoplasm", "membrane", "ribosome"], "answer": "nucleus"},
+        {"question": "Which part controls what enters and leaves the cell?",
+         "options": ["cell wall", "cell membrane", "nucleus", "vacuole"], "answer": "cell membrane"},
+    ]},
+    "human body": {"subject": "Science", "questions": [
+        {"question": "Which organ pumps blood around the body?",
+         "options": ["lungs", "heart", "liver", "brain"], "answer": "heart"},
+        {"question": "Which organ is mainly responsible for breathing?",
+         "options": ["heart", "lungs", "kidneys", "stomach"], "answer": "lungs"},
+        {"question": "Which organ controls the whole body?",
+         "options": ["heart", "brain", "liver", "skin"], "answer": "brain"},
+        {"question": "Which organ filters waste from the blood to make urine?",
+         "options": ["kidneys", "stomach", "liver", "pancreas"], "answer": "kidneys"},
+    ]},
+    "fractions": {"subject": "Math", "questions": [
+        {"question": "What is 1/2 + 1/2?", "options": ["1", "2", "1/4", "3/4"], "answer": "1"},
+        {"question": "Simplify the fraction 4/8.", "options": ["1/2", "2/3", "1/4", "3/4"], "answer": "1/2"},
+        {"question": "Which fraction is equivalent to 2/3?",
+         "options": ["4/6", "3/4", "5/6", "1/2"], "answer": "4/6"},
+        {"question": "What is 1/2 of 10?", "options": ["5", "2", "10", "20"], "answer": "5"},
+    ]},
+    "percentages": {"subject": "Math", "questions": [
+        {"question": "What is 50% of 200?", "options": ["50", "100", "150", "25"], "answer": "100"},
+        {"question": "Convert 0.5 to a percentage.", "options": ["5%", "50%", "0.5%", "15%"], "answer": "50%"},
+        {"question": "What is 10% of 80?", "options": ["8", "10", "16", "4"], "answer": "8"},
+        {"question": "Convert 1/4 to a percentage.", "options": ["40%", "25%", "4%", "14%"], "answer": "25%"},
+    ]},
+    "grammar": {"subject": "English", "questions": [
+        {"question": "Which sentence is grammatically correct?",
+         "options": ["She don't like it.", "She doesn't like it.", "She not like it.", "She doesn't likes it."],
+         "answer": "She doesn't like it."},
+        {"question": "What is the past tense of 'go'?",
+         "options": ["goed", "went", "gone", "going"], "answer": "went"},
+        {"question": "Choose the correct article: 'She ate ___ apple.'",
+         "options": ["a", "an", "the"], "answer": "an"},
+        {"question": "Which word is a noun?",
+         "options": ["run", "quickly", "teacher", "beautiful"], "answer": "teacher"},
+    ]},
+    "vocabulary": {"subject": "English", "questions": [
+        {"question": "What is a synonym of 'happy'?",
+         "options": ["sad", "joyful", "angry", "tired"], "answer": "joyful"},
+        {"question": "What is the opposite (antonym) of 'difficult'?",
+         "options": ["hard", "easy", "heavy", "tall"], "answer": "easy"},
+        {"question": "What is a synonym of 'big'?",
+         "options": ["small", "large", "tiny", "short"], "answer": "large"},
+        {"question": "What does 'ancient' mean?",
+         "options": ["very old", "very new", "fast", "large"], "answer": "very old"},
+    ]},
+}
+
+
+def _subject_bank(subject):
+    """Return the general question bank for a subject."""
+    return list(_QUIZ_BANK.get(subject) or _QUIZ_BANK.get(subject.capitalize()) or _QUIZ_BANK.get("Science"))
+
+
+def _pick_topic_bank(subject, topic):
+    """Return a curated topic-specific bank for subject+topic, or None.
+
+    Matching is lenient so the user's topic is honored: exact match, substring,
+    or any single-word overlap (e.g. topic "photosynthesis process" matches the
+    photosynthesis bank)."""
+    if not topic:
+        return None
+    tl = (topic or "").lower().strip()
+    if not tl:
+        return None
+    subj = subject.lower()
+    words = [w for w in tl.split() if len(w) > 2]
+    for key, spec in _QUIZ_TOPICS.items():
+        if spec["subject"].lower() != subj:
+            continue
+        kl = key.lower()
+        if kl == tl or kl in tl or any(w == kl for w in words):
+            return list(spec["questions"])
+    return None
+
+
+def _dedupe_questions(qs):
+    """Drop duplicate questions (case-insensitive), keeping first occurrence."""
+    seen = set()
+    out = []
+    for q in qs:
+        key = (q.get("question") or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(q)
+    return out
+
+
 def generate_quiz(subject="Science", topic="", number=5):
     """Build a multiple-choice quiz.
 
     Tries the Gemini engine first (up to ~45s), then falls back to a curated
-    built-in bank per subject. Returns a list of {question, options, answer}.
+    built-in bank that honors the requested subject and topic. Never repeats a
+    question and returns up to `number` distinct questions.
     """
     subject = (subject or "Science").strip()
     try:
@@ -967,9 +1084,17 @@ def generate_quiz(subject="Science", topic="", number=5):
 
     llm_quiz = _generate_quiz_with_gemini(subject, topic, number)
     if llm_quiz:
-        return llm_quiz
+        return _dedupe_questions(llm_quiz)[:number]
 
-    bank = _QUIZ_BANK.get(subject) or _QUIZ_BANK.get(subject.capitalize()) or _QUIZ_BANK.get("Science")
-    bank = list(bank)
-    random.shuffle(bank)
-    return [dict(q) for q in bank[:min(number, len(bank))]]
+    # Offline fallback: lead with topic-specific questions, then fill in with
+    # general subject questions — always distinct and capped at `number`.
+    topic_qs = _dedupe_questions(_pick_topic_bank(subject, topic) or [])
+    general_qs = _dedupe_questions(_subject_bank(subject))
+    sel = list(topic_qs)
+    for g in general_qs:
+        if len(sel) >= number:
+            break
+        if not any(g.get("question", "").strip().lower() == q.get("question", "").strip().lower() for q in sel):
+            sel.append(g)
+    random.shuffle(sel)
+    return [dict(q) for q in sel[:min(number, len(sel))]]

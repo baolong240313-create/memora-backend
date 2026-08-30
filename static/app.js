@@ -1554,7 +1554,7 @@
         </div>
         <div style="margin-top:26px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
           <button class="btn btn-primary btn-lg" onclick="App.quizDeck(${deckId})">Quiz Again</button>
-          <button class="btn btn-lg" onclick="location.hash='#/deck/${deckId}'">Back to Deck</button>
+          <button class="btn btn-lg" onclick="App.leaveStudy('#/deck/${deckId}')">Back to Deck</button>
         </div></div></div>`;
     }
     show();
@@ -1662,8 +1662,9 @@
     const q = $("#zsQ"), opts = $("#zsOpts"), prog = $("#zsProg"), counter = $("#zsCounter"), next = $("#zsNext");
 
     function paintProg() {
+      // Show progress in one uniform color (no right/wrong reveal before the end).
       prog.innerHTML = questions.map((c, idx) =>
-        `<i class="${idx < i ? (picked[idx] === c.answer ? "correct" : "wrong") : (idx === i ? "done" : "")}"></i>`
+        `<i class="${idx <= i ? "done" : ""}"></i>`
       ).join("");
       counter.textContent = `Question ${Math.min(i + 1, questions.length)} of ${questions.length}`;
     }
@@ -1722,7 +1723,7 @@
         </div>
         <div style="margin:24px 0;text-align:left" class="qz-review-list">${banner}</div>
         <div style="margin-top:18px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-          <button class="btn btn-primary btn-lg" onclick="location.hash='#/quizzes'">Back to Quizzes</button>
+          <button class="btn btn-primary btn-lg" onclick="App.leaveStudy('#/quizzes')">Back to Quizzes</button>
         </div></div></div>`;
     }
     show();
@@ -1772,6 +1773,7 @@
     initChangelog();
     initConfirm();
     initImport();
+    ensureImportModal();
     document.addEventListener("click", closeSelects);
     api("/version").then(({ data }) => {
       if (data && data.version) $("#appVersion").textContent = "v" + data.version.split(".").slice(0, 2).join(".");

@@ -1,9 +1,20 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **13.0.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **13.1.0**.
 
-## [13.0.0] - current
+## [13.1.0] - current
+
+### Changed
+- **No duplicate questions in quizzes.** The quiz generator now de-duplicates
+  questions (case-insensitive) on both the AI and offline paths, and fills in
+  with distinct general questions when the requested count is larger than the
+  topic bank.
+- **Topic is honored first.** Topic-specific questions are picked first, and
+  topic matching is lenient (exact, substring, or any single-word overlap) so
+  e.g. "photosynthesis process" still returns photosynthesis questions.
+
+## [13.0.0] - previous
 
 ### Added
 - **Quizzes section.** A brand-new **Quizzes** page in the nav. Two ways to play:
