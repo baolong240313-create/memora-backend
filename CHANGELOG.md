@@ -1,9 +1,31 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **13.3.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **13.4.0**.
 
-## [13.3.0] - current
+## [13.4.0] - current
+
+### Added
+- **Science quiz topics.** Added curated question banks for physics, chemistry,
+  astronomy, botany, zoology, genetics, ecology, medicine, earth science, and
+  geology. Picking a topic like **Science + physics** now gives you physics
+  questions instead of falling back to generic science.
+- **AI flashcards work with your API key.** Generating cards from pasted notes
+  uses the Gemini AI (GEMINI_API_KEY) and falls back to the built-in parser
+  when no key is set.
+
+### Fixed
+- **Phantom "Sign out".** On load the app now validates a saved session against
+  the server. If it's stale (e.g. the database was wiped on a redeploy), it
+  clears it so the nav no longer shows "Sign out" and fakes the user into
+  thinking they're still logged in.
+
+### Note
+- **Progress persistence on Render is a one-time setup step** (add a persistent
+  Disk + set `MEMORA_DB` and `MEMORA_SECRET`). Code can't provision storage;
+  without it the free Render filesystem is rebuilt on every deploy.
+
+## [13.3.0] - previous
 
 ### Changed
 - **Generator naming.** The "Paste in Your Studies" heading/label is now

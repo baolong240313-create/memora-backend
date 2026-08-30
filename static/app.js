@@ -1808,6 +1808,18 @@
     initImport();
     ensureImportModal();
     document.addEventListener("click", closeSelects);
+    // Validate a saved session: if the server no longer recognizes the token
+    // (e.g. the DB was wiped on a redeploy), clear it so the nav doesn't show
+    // a phantom "Sign out" and make the user think they're still logged in.
+    if (state.token) {
+      api("/auth/me").then(({ ok }) => {
+        if (!ok) {
+          state.token = null; state.user = null;
+          localStorage.removeItem("memora_token"); localStorage.removeItem("memora_user");
+          renderNav();
+        }
+      });
+    }
     api("/version").then(({ data }) => {
       if (data && data.version) $("#appVersion").textContent = "v" + data.version.split(".").slice(0, 2).join(".");
     });
