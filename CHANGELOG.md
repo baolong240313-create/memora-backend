@@ -1,9 +1,9 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **12.4.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **12.5.0**.
 
-## [12.4.0] - current
+## [12.5.0] - current
 
 ### Added
 - **Import decks from Anki/Quizlet.** The My Decks page now has an **Import**
@@ -17,6 +17,16 @@ All notable changes to Memora are documented here. Format based on
 - **Shuffle toggle in study mode.** A **🔀 Shuffle / In order** button in the
   study header lets you switch between a shuffled deck and the original order,
   so you never just memorize the sequence. (Shuffle stays on by default.)
+- **Smarter test/worksheet flashcards.** Memora now recognizes graded tests and
+  worksheets with a numbered or unnumbered **Question list** plus an **Answer
+  Key** (e.g. an English grammar test). It pairs each question with its matching
+  answer into clean flashcards, keeps fill-in-the-blank "________" prompts intact
+  (answer goes on the back), and no longer wraps quoted sentences like
+  "He don't like reading books." into "What is …".
+
+### Changed
+- **requirements.txt now includes `gunicorn`** (production WSGI server for
+  Render). Render runs `gunicorn app:app` for a stable production deployment.
 
 ## [12.3.0] - previous
 

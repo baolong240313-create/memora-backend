@@ -62,6 +62,12 @@ def _generate_with_gemini(notes, subject, difficulty, number, style, api_key=Non
         f"1. Rely strictly on facts mentioned in the notes.\n"
         f"2. Keep the 'front' punchy and 'back' concise and clear.\n"
         f"3. Return ONLY a valid JSON array of objects with keys 'front' and 'back'.\n"
+        f"4. If the notes look like a test/worksheet with a numbered Question list and an "
+        f"Answer Key, make ONE card per question: front = the question (keep any blank "
+        f"like '________' exactly as-is), back = the answer.\n"
+        f"5. If a 'front' is fill-in-the-blank, put only the missing word/phrase on the 'back'.\n"
+        f"6. If a question is already complete (e.g. 'Correct the error: ...'), make the "
+        f"corrected sentence the 'back'.\n"
         f"Example format: [ {{\"front\": \"What is X?\", \"back\": \"X is Y.\"}} ]\n\n"
         f"Study Notes:\n{notes}\n"
     )
@@ -341,6 +347,91 @@ def _parse_structured_qa(text):
     return [(q, a) for (q, a) in pairs if q and a and len(q) > 2 and len(a) > 1], used
 
 
+def _numbered_items(lines, start, end):
+    """Return [(orig_line_idx, text)] for numbered items within lines[start:end].
+
+    lines is a list of (idx, stripped_text). Numbered items look like "1. ...",
+    "2) ...", "3- ...", etc.
+    """
+    items = []
+    for orig_idx, ln in lines[start:end]:
+        m = re.match(r"^\s*\d{1,3}\s*[.)\-]\s+(.+)$", ln)
+        if m:
+            items.append((orig_idx, m.group(1).strip()))
+    return items
+
+
+def _is_question_line(ln):
+    """True if a line is a real test question rather than an instruction/section.
+
+    A question either has a fill-in-the-blank run of underscores, ends with a
+    question mark, or is a quoted sentence ("...").
+    """
+    if re.search(r"_{3,}", ln):
+        return True
+    if ln.rstrip().endswith("?"):
+        return True
+    if ln.startswith('"') and ln.rstrip().endswith('"'):
+        return True
+    return False
+
+
+def _parse_test_qa(text):
+    """Pair a Question list with an Answer Key (worksheets / exams).
+
+    Handles both numbered tests ("1. ...") and unnumbered ones where the
+    questions are lines with blanks/"?"/quotes and the answers are given in
+    order after an "Answer Key" header. Returns (pairs, used_indices).
+
+    Example input:
+        English Test
+        Questions
+        Fill in the blank with the past tense of the verb:
+        She ___ (lose) her keys in the park yesterday.
+        Answer Key:
+        lost
+
+    Produces {"front": "She ___ (lose) her keys...", "back": "lost"}.
+    """
+    lines = [(idx, ln.strip()) for idx, ln in enumerate(text.splitlines()) if ln.strip()]
+    # Find the answer-section header (bare "Answer", "Answers", "Answer Key").
+    # NOTE: a_pos is the position IN the `lines` list (not the original line number).
+    a_pos = None
+    for pos, (_, ln) in enumerate(lines):
+        if re.match(r"^\s*(?:answer\s*key|answers?)\s*[:.]?\s*$", ln, re.I):
+            a_pos = pos
+            break
+    if a_pos is None:
+        return [], set()
+
+    pre = lines[:a_pos]
+    post = lines[a_pos + 1:]
+
+    # Questions: prefer numbered items ("1. ..."), else recognized question lines.
+    q_items = _numbered_items(lines, 0, a_pos)
+    if len(q_items) < 2:
+        q_items = [(idx, ln) for idx, ln in pre if _is_question_line(ln)]
+
+    # Answers: numbered ("1. lost") or plain consecutive lines after the key.
+    a_items = _numbered_items(lines, a_pos + 1, len(lines))
+    if len(a_items) < len(q_items):
+        a_items = [(idx, ln) for idx, ln in post
+                    if not re.match(r"^\s*(?:answer|summary|correct)", ln, re.I)]
+    a_items = [(i, t) for i, t in a_items
+               if not re.match(r"^\s*(?:questions?|part\s*\d+|answers?)\s*[:.]?\s*$", t, re.I)]
+
+    pairs = []
+    used = set()
+    for (qidx, qtext), (aidx, atext) in zip(q_items, a_items):
+        q = _clean_str(qtext)
+        a = _clean_str(atext)
+        if q and a and q.lower() != a.lower():
+            pairs.append((q, a))
+            used.add(qidx)
+            used.add(aidx)
+    return pairs, used
+
+
 # ---------------------------------------------------------------------------
 # 4. Prose / Sentence Processing & Card Builders
 # ---------------------------------------------------------------------------
@@ -479,12 +570,14 @@ def _build_card_from_pair(front, back, style):
         # Never wrap an already-formed cloze front in "What is ..."
         if "______" in front:
             return {"front": front, "back": back}
-        return {"front": front if front.endswith("?") else f"What is {front}?", "back": back}
+        if front.endswith("?") or '"' in front:
+            return {"front": front, "back": back}
+        return {"front": f"What is {front}?", "back": back}
     else:  # q&a default
         # Never wrap an already-formed cloze front in "What is ..."
         if "______" in front:
             return {"front": front, "back": back}
-        if not front.endswith("?") and not front.lower().startswith(("what", "how", "why", "which", "where", "who", "when", "describe", "explain")):
+        if not front.endswith("?") and not front.lower().startswith(("what", "how", "why", "which", "where", "who", "when", "describe", "explain")) and '"' not in front:
             return {"front": f"What is {front}?", "back": back}
         return {"front": front, "back": back}
 
@@ -595,18 +688,25 @@ def generate(notes, subject="Other", difficulty="Medium", number=5, style="q&a")
     remaining = notes
     topic = _topic_from_notes(notes, subject)
 
-    # 2a. Structured Q&A
+    # 2a. Test / worksheet pairing (numbered Question list + Answer Key). Run
+    #     first so these lines aren't re-parsed into junk cards downstream.
+    if len(cards) < number:
+        test_pairs, used = _parse_test_qa(remaining)
+        feed(test_pairs)
+        remaining = remove_lines(remaining, used)
+
+    # 2b. Structured Q&A
     qa_pairs, used = _parse_structured_qa(remaining)
     feed(qa_pairs)
     remaining = remove_lines(remaining, used)
 
-    # 2b. Markdown tables
+    # 2c. Markdown tables
     if len(cards) < number:
         table_pairs, used = _parse_tables(remaining)
         feed(table_pairs)
         remaining = remove_lines(remaining, used)
 
-    # 2c. Bullet / colon / dash definitions
+    # 2d. Bullet / colon / dash definitions
     if len(cards) < number:
         bullet_pairs, used = _parse_bullet_definitions(remaining)
         feed(bullet_pairs)
