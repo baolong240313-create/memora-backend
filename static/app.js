@@ -69,8 +69,8 @@
   function renderNav() {
     const links = $("#navLinks");
     links.innerHTML = state.user
-      ? `<a href="#/dashboard">Dashboard</a><a href="#/generator">Create</a><a href="#/library">My Decks</a><a href="#/quizzes">Quizzes</a><a href="#/stats">Stats</a>`
-      : `<a href="#/generator">Create Flashcards</a>`;
+      ? `<a href="#/dashboard">Dashboard</a><a href="#/generator">Paste</a><a href="#/library">My Decks</a><a href="#/quizzes">Quizzes</a><a href="#/stats">Stats</a>`
+      : `<a href="#/generator">Paste Your Studies</a>`;
     $$("#navLinks a").forEach(a => { a.classList.toggle("active", location.hash.startsWith(a.getAttribute("href"))); });
     const nu = $("#navUser");
     if (state.user) {
@@ -551,7 +551,7 @@
         <h1>Turn your notes into flashcards <span class="grad">in seconds.</span></h1>
         <p class="sub">Study smarter by turning your notes into interactive flashcards automatically.</p>
         <div class="hero-actions">
-          <button class="btn btn-primary btn-lg" onclick="location.hash='#/generator'">Create Flashcards</button>
+          <button class="btn btn-primary btn-lg" onclick="location.hash='#/generator'">Paste Your Studies</button>
           <button class="btn btn-lg" id="tryDemoBtn">Try a Demo</button>
         </div>
         <div class="demo-card-wrap">
@@ -590,15 +590,21 @@
 
   function renderGenerator() {
     app.innerHTML = `
-      <div class="page-head"><h1>Create Flashcards</h1></div>
+      <div class="page-head"><h1>Paste in Your Studies</h1></div>
       <div class="view" style="max-width:760px;margin:0 auto">
         <div class="panel">
           <div class="field">
-            <label>1. Create your flashcards <span class="hint">(enter content or upload a .txt / .pdf file)</span></label>
+            <label>1. Paste in your studies <span class="hint">(enter content or upload a .txt / .pdf file)</span></label>
             <textarea id="genNotes" placeholder="Type or paste your study notes here...">${escapeHtml(gen.notes)}</textarea>
             <div class="char-count" id="genCount"></div>
             <div class="upload-box" id="genUpload">📄 Upload a file (.txt or .pdf)</div>
             <input type="file" id="genFile" accept=".txt,.pdf,text/plain,application/pdf" class="hidden" />
+          </div>
+          <div class="field">
+            <label>✨ Or let the AI generate from a topic <span class="hint">(skip pasting notes)</span></label>
+            <input type="text" id="genTopic" placeholder="e.g. The water cycle, Roman Empire, Quadratic equations" />
+            <button class="btn btn-primary btn-block" id="genAiBtn" style="margin-top:10px">✨ Generate AI Flashcards from Topic</button>
+            <div class="field-hint">The AI researches the topic and writes the flashcards itself — just like the AI quiz. (Needs a GEMINI_API_KEY to run.)</div>
           </div>
           <div class="field">
             <label>2. Subject</label>
@@ -719,6 +725,28 @@
     const range = $("#genNum");
     range.addEventListener("input", e => { gen.number = +e.target.value; $("#genNumVal").textContent = gen.number; });
     $("#genGo").onclick = doGenerate;
+    $("#genAiBtn").onclick = doGenerateAI;
+  }
+  async function doGenerateAI() {
+    const topic = ($("#genTopic")?.value || "").trim();
+    if (!topic) { toast("Enter a topic you want the AI to research first.", "error"); return; }
+    const out = $("#genOut"); if (!out) return;
+    out.innerHTML = loaderHtml("✨ The AI is researching “" + escapeHtml(topic) + "”… (up to ~45s)");
+    const { ok, status, data } = await api("/generate/ai", {
+      method: "POST",
+      body: { topic, subject: gen.subject, difficulty: gen.difficulty, number: gen.number, style: gen.style },
+    });
+    if (!ok) {
+      if (status === 401 || status === 402) { renderFreeLocked(); return; }
+      out.innerHTML = `<div class="empty"><div class="em">😕</div><h3>Couldn't generate</h3><p>${escapeHtml(data.error || "Please try again.")}</p></div>`;
+      return;
+    }
+    genResults = data.cards || [];
+    if (!genResults.length) {
+      out.innerHTML = `<div class="empty"><div class="em">🤔</div><h3>No cards came back</h3><p>Make sure a GEMINI_API_KEY is set on the server, then try again.</p></div>`;
+      return;
+    }
+    renderResultsPreview(genResults, { limited: false });
   }
   function chipBind(sel, attr, apply) {
     $$(sel + " .chip").forEach(c => c.onclick = () => {
@@ -1031,6 +1059,33 @@
   }
 
   /* ================= DECK DETAIL ================= */
+  async function downloadDeck(deckId, format) {
+    try {
+      const headers = {};
+      if (state.token) headers["Authorization"] = "Bearer " + state.token;
+      else headers["X-Guest-Id"] = state.guestId;
+      const res = await fetch(`/api/decks/${deckId}/export?format=${format}`, { headers });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        toast(d.error || "Couldn't download the deck.", "error");
+        return;
+      }
+      const blob = await res.blob();
+      const ext = format === "pdf" ? "pdf" : format === "json" ? "json" : "txt";
+      const a = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      a.href = url;
+      a.download = "deck-" + deckId + "." + ext;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast("Downloaded your deck as " + format.toUpperCase() + " ✅");
+    } catch (err) {
+      toast("Couldn't download the deck.", "error");
+    }
+  }
+
   async function renderDeck(id) {
     const { ok, data } = await api("/decks/" + id);
     if (!ok || !data.deck) { app.innerHTML = `<div class="empty view"><h3>Deck not found</h3></div>`; return; }
@@ -1070,6 +1125,12 @@
           <button class="btn btn-lg" onclick="App.smartReview(${d.id})">🧠 Smart Review</button>
         </div>
         <div class="meta muted" style="margin:8px 0 18px">${cards.length} cards${d.accuracy != null ? " · " + Math.round(d.accuracy) + "% accuracy" : ""}${weakCount ? " · " + weakCount + " to review" : ""}</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 18px">
+          <span class="muted" style="font-size:13px;font-weight:600">⬇ Download:</span>
+          <button class="btn" onclick="App.downloadDeck(${d.id},'pdf')">📄 PDF</button>
+          <button class="btn" onclick="App.downloadDeck(${d.id},'txt')">📝 TXT</button>
+          <button class="btn" onclick="App.downloadDeck(${d.id},'json')">🧩 JSON</button>
+        </div>
         <div class="panel" style="margin-bottom:18px">
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
             <input type="text" id="deckRename" value="${escapeHtml(d.name)}" style="flex:1;min-width:200px" />
@@ -1795,6 +1856,7 @@
     delCard,
     regenCard,
     renderDeckNow: renderDeck,
+    downloadDeck,
     openImport,
     createImportDeck,
     quizDeck,

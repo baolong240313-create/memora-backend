@@ -14,6 +14,8 @@
 - **Quizzes section** — a dedicated **Quizzes** page to **create an AI quiz** on English, Math, or Science (score revealed only at the end), or turn any of your decks into a quiz.
 - **Import decks** — paste terms from Anki/Quizlet exports (or `Term: Definition` / `Term — Definition` lines) and turn them into a deck instantly.
 - **Deck-by-deck review** — the "To review" dashboard card lists your weak cards grouped by deck, so you choose which deck to refresh first.
+- **AI flashcards from a topic** — in "Paste in Your Studies", type a topic and the AI researches and writes the flashcards for you (like the AI quiz).
+- **Download decks** — export any deck as a **PDF**, **TXT**, or **JSON** file to keep or share your flashcards.
 - **Progress** — per-deck progress bars, plus a statistics page with daily study time, cards reviewed, accuracy, and study streak.
 - **Polish** — light/dark mode, responsive layout, page transitions, toasts, confirm dialogs, and empty states.
 
@@ -38,7 +40,8 @@ python app.py
 | Env var | Purpose |
 |---|---|
 | `MEMORA_SECRET` | Secret used to sign session/guest cookies. Set a long random value in production. Defaults to a random per-process key in dev (signs users out on restart). |
-| `MEMORA_DB` | Path to the SQLite database. Defaults to `~/memora-data/memora.db`. |
+| `MEMORA_DB` | Path to the SQLite database. Defaults to `~/memora-data/memora.db`. For durable data on Render, mount a persistent disk and point this at it (e.g. `/data/memora.db`). |
+| `MEMORA_SECRET` | A fixed secret key. Set this to a long random string so sessions (logins) survive re-deploys instead of logging everyone out. |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | Enables AI flashcard generation (default model `gemini-2.5-flash`). Falls back to the offline heuristic engine when unset/unavailable. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Enables email delivery for the password-reset flow. When unset, the reset code is logged to the server output instead (for local testing). |
 | `GOOGLE_CLIENT_ID` | Enables the **Sign in with Google** button in the login modal. See below for setup. |

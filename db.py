@@ -7,6 +7,12 @@ from contextlib import contextmanager
 _LOCAL = os.path.join(os.path.expanduser("~"), "memora-data")
 os.makedirs(_LOCAL, exist_ok=True)
 DB_PATH = os.environ.get("MEMORA_DB", os.path.join(_LOCAL, "memora.db"))
+# Ensure the folder that holds the database exists, so a MEMORA_DB pointing at a
+# persistent Render disk mount (e.g. /data/memora.db) works out of the box.
+try:
+    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+except OSError:
+    pass
 
 
 def _ts():

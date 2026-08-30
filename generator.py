@@ -133,6 +133,99 @@ def _generate_with_gemini(notes, subject, difficulty, number, style, api_key=Non
     return None
 
 
+def _generate_with_gemini_topic(subject, topic, difficulty, number, style, api_key=None):
+    """Use Gemini to research a topic and write flashcards from its knowledge.
+
+    This powers the "AI generate from a topic" mode (like the AI quiz): the
+    user gives a topic instead of pasted notes, and the AI writes accurate
+    cards about it. Returns a list of {front, back} or None.
+    """
+    key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not key:
+        return None
+
+    model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+
+    style_instruction = {
+        "q&a": "Format each card with a clear question as 'front' and the direct factual answer as 'back'.",
+        "term": "Format each card with the concept/term as 'front' and its concise definition as 'back'.",
+        "cloze": "Format each card with a fill-in-the-blank sentence containing '______' as 'front' and the missing term as 'back'.",
+        "mixed": "Provide a balanced mix of questions, definitions, and fill-in-the-blank cloze cards.",
+    }.get(style, "Provide clear question-and-answer flashcards.")
+
+    prompt_text = (
+        f"You are an expert educator and researcher. Research your own knowledge to write "
+        f"exactly {number} high-yield, factually accurate flashcards about the topic '{topic}' "
+        f"for subject '{subject}' at '{difficulty}' difficulty level.\n\n"
+        f"Style requirement: {style_instruction}\n\n"
+        f"Rules:\n"
+        f"1. Be specific and correct about '{topic}' — do not pad with generic facts from "
+        f"outside the topic.\n"
+        f"2. Keep the 'front' punchy and the 'back' concise and clear.\n"
+        f"3. Cover the most important concepts, terms, and facts a student should know.\n"
+        f"4. Return ONLY a valid JSON array of objects with keys 'front' and 'back'.\n"
+        f"Example: [ {{\"front\": \"What is X?\", \"back\": \"X is Y.\"}} ]\n"
+    )
+
+    request_body = {
+        "contents": [{"parts": [{"text": prompt_text}]}],
+        "generationConfig": {
+            "temperature": 0.3,
+            "maxOutputTokens": 4096,
+            "responseMimeType": "application/json"
+        },
+    }
+
+    try:
+        data_bytes = json.dumps(request_body).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=data_bytes, headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+        candidates = result.get("candidates", [])
+        if not candidates:
+            return None
+        raw_text = (candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "") or "").strip()
+        if raw_text.startswith("```"):
+            raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
+            raw_text = re.sub(r"\s*```$", "", raw_text).strip()
+        cards_data = json.loads(raw_text)
+        if isinstance(cards_data, list):
+            valid = []
+            for item in cards_data:
+                if isinstance(item, dict) and item.get("front") and item.get("back"):
+                    f = str(item["front"]).strip()
+                    b = str(item["back"]).strip()
+                    if f and b:
+                        valid.append({"front": f, "back": b})
+            if valid:
+                return valid[:number]
+    except Exception as exc:
+        logger.warning("Gemini topic generation failed: %s", exc)
+        return None
+    return None
+
+
+def generate_from_topic(subject, topic, difficulty="Medium", number=5, style="q&a"):
+    """AI-generated flashcards on a topic (no pasted notes needed).
+
+    Uses Gemini's research when a key is available. There is no offline
+    fallback for arbitrary topics (we don't fabricate facts), so this returns
+    [] without a key rather than inventing wrong answers.
+    """
+    topic = (topic or "").strip()
+    if not topic:
+        return []
+    try:
+        number = max(1, min(int(number), 50))
+    except (ValueError, TypeError):
+        number = 5
+    llm = _generate_with_gemini_topic(subject, topic, difficulty, number, style)
+    return (llm or [])[:number]
+
+
 # ---------------------------------------------------------------------------
 # 2. Heuristic Engine: Parsing & Patterns
 # ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@ from collections import defaultdict
 from email.message import EmailMessage
 from functools import wraps
 
-from flask import Flask, g, jsonify, request, send_from_directory
+from flask import Flask, Response, g, jsonify, request, send_from_directory
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -25,7 +25,7 @@ import generator
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "13.1.0"
+APP_VERSION = "13.2.0"
 
 
 def _load_dotenv():
@@ -513,6 +513,64 @@ def deck_get(deck_id):
     return jsonify({"deck": deck})
 
 
+def _deck_download(deck, cards, fmt):
+    """Return a Flask Response that downloads a deck as txt/json/pdf."""
+    name = (deck.get("name") or "deck").replace(" ", "_").strip()
+    safe_name = "".join(c if c.isalnum() or c in "-_." else "_" for c in name) or "deck"
+    if fmt == "txt":
+        lines = [f"{deck['name']}", f"Subject: {deck.get('subject', '')}", f"{len(cards)} cards", ""]
+        for i, c in enumerate(cards, 1):
+            lines.append(f"{i}. {c['front']}")
+            lines.append(f"   {c['back']}")
+            lines.append("")
+        return Response("\n".join(lines), mimetype="text/plain",
+                        headers={"Content-Disposition": f"attachment; filename={safe_name}.txt"})
+    if fmt == "json":
+        payload = {
+            "deck": deck.get("name"),
+            "subject": deck.get("subject", ""),
+            "cards": [{"front": c["front"], "back": c["back"], "style": c.get("style", "")} for c in cards],
+        }
+        return Response(json.dumps(payload, indent=2, ensure_ascii=False), mimetype="application/json",
+                        headers={"Content-Disposition": f"attachment; filename={safe_name}.json"})
+    # pdf
+    from io import BytesIO
+    from xml.sax.saxutils import escape
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, rightMargin=0.7 * inch, leftMargin=0.7 * inch,
+                            topMargin=0.7 * inch, bottomMargin=0.7 * inch)
+    styles = getSampleStyleSheet()
+    story = [Paragraph(escape(deck["name"]), styles["Title"]),
+             Paragraph(f"Subject: {escape(str(deck.get('subject', '')))} &middot; {len(cards)} cards", styles["Normal"]),
+             Spacer(1, 0.16 * inch)]
+    for i, c in enumerate(cards, 1):
+        story.append(Paragraph(f"{i}. {escape(c['front'])}", styles["Heading2"]))
+        story.append(Paragraph(escape(c["back"]), styles["BodyText"]))
+        story.append(Spacer(1, 0.14 * inch))
+    doc.build(story)
+    return Response(buf.getvalue(), mimetype="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename={safe_name}.pdf"})
+
+
+@app.route("/api/decks/<int:deck_id>/export")
+def deck_export(deck_id):
+    fmt = (request.args.get("format") or "txt").lower()
+    if fmt not in ("txt", "json", "pdf"):
+        return jsonify({"error": "Unsupported format"}), 400
+    user = _current_user()
+    if not user:
+        return jsonify({"error": "Not signed in"}), 401
+    deck = db.get_deck(user["id"], deck_id)
+    if not deck:
+        return jsonify({"error": "Deck not found"}), 404
+    cards = db.get_cards(deck_id)
+    return _deck_download(deck, cards, fmt)
+
+
 def build_feedback(deck, cards):
     """Summarize the most recent study round for this deck."""
     s = db.last_deck_session(deck["id"])
@@ -751,6 +809,37 @@ def generate():
     if guest_id:
         _set_guest_cookie(resp, guest_id)
     return resp
+
+
+@app.route("/api/generate/ai", methods=["POST"])
+@_throttle(30, 60)
+def generate_ai_topic():
+    """AI-generated flashcards from a topic (no pasted notes needed)."""
+    data = request.get_json(silent=True) or {}
+    topic = str(data.get("topic") or "").strip()[:200]
+    if not topic:
+        return jsonify({"error": "Tell the AI a topic to write flashcards about."}), 400
+
+    user = _current_user()
+    if not user:
+        return jsonify({"error": "sign_in_required"}), 401
+
+    subject = str(data.get("subject") or "Other").strip()[:80] or "Other"
+    difficulty = str(data.get("difficulty") or "Medium").strip()
+    if difficulty not in ("Easy", "Medium", "Hard"):
+        difficulty = "Medium"
+    style = str(data.get("style") or "q&a").strip()
+    if style not in ("q&a", "term", "cloze", "mixed"):
+        style = "q&a"
+    try:
+        number = max(1, min(int(data.get("number") or 5), 50))
+    except (ValueError, TypeError):
+        number = 5
+
+    cards = generator.generate_from_topic(subject, topic, difficulty, number, style)
+    for c in cards:
+        c.setdefault("style", style)
+    return jsonify({"cards": cards, "signed_in": True})
 
 
 # ------------------------------------------------------------------ quizzes

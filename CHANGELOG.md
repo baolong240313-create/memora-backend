@@ -1,9 +1,30 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **13.1.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **13.2.0**.
 
-## [13.1.0] - current
+## [13.2.0] - current
+
+### Added
+- **AI flashcards from a topic.** The Paste page now has an "Generate AI
+  Flashcards from Topic" button: type a topic (e.g. "Photosynthesis", "The
+  Roman Empire") and the AI researches and writes the flashcards itself — just
+  like the AI quiz. Requires a `GEMINI_API_KEY` on the server.
+- **Download your decks.** Every deck now has a **Download** row (PDF / TXT /
+  JSON) so you can keep or share your flashcards as a file.
+
+### Changed
+- **"Create your flashcards" renamed** to **"Paste in your studies"** across
+  the app (page title, step label, and navigation).
+
+### Fixed
+- **Progress no longer resets on deploy.** Memora now reads its database from a
+  configurable persistent path: set the Render env var `MEMORA_DB` to a
+  persistent disk mount (e.g. `/data/memora.db`) and `MEMORA_SECRET` to a fixed
+  secret so accounts and progress survive re-deploys. The app auto-creates the
+  folder so a mounted disk works out of the box.
+
+## [13.1.0] - previous
 
 ### Changed
 - **No duplicate questions in quizzes.** The quiz generator now de-duplicates
