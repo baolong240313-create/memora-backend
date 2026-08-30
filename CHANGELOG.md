@@ -1,9 +1,9 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **12.5.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **12.6.0**.
 
-## [12.5.0] - current
+## [12.6.0] - current
 
 ### Added
 - **Import decks from Anki/Quizlet.** The My Decks page now has an **Import**
