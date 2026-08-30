@@ -72,6 +72,32 @@
     </div>
   </div>
 
+  <!-- Import deck modal -->
+  <div class="modal-overlay hidden" id="importModal">
+    <div class="modal modal-wide">
+      <button class="close" id="importClose">✕</button>
+      <h2>Import a deck</h2>
+      <p class="m-sub">Paste your cards below — one per line — and Memora will turn them into a deck.</p>
+      <div class="imp-formats">
+        <b>Supported formats</b>
+        <div>Term&nbsp;⇥&nbsp;Definition &nbsp;(tab, like Anki/Quizlet export)</div>
+        <div>Term: Definition &nbsp;·&nbsp; Term — Definition &nbsp;·&nbsp; Term, Definition</div>
+      </div>
+      <div class="field">
+        <label>Deck name</label>
+        <input type="text" id="impName" placeholder="e.g. Biology — Cells" />
+      </div>
+      <div class="field">
+        <label>Your cards</label>
+        <textarea id="impText" placeholder="Mitochondria	The powerhouse of the cell
+Photosynthesis	Turns sunlight into chemical energy"></textarea>
+        <div class="char-count" id="impCount">0 cards</div>
+      </div>
+      <div class="error" id="impError"></div>
+      <button class="btn btn-primary btn-block btn-lg" id="impCreateBtn">📥 Create deck</button>
+    </div>
+  </div>
+
   <!-- Confirm modal -->
   <div class="modal-overlay hidden" id="confirmModal">
     <div class="modal">

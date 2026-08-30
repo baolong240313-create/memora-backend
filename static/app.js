@@ -321,6 +321,74 @@
     modal.addEventListener("click", e => { if (e.target.id === "confirmModal") modal.classList.add("hidden"); });
   }
 
+  /* ================= IMPORT DECK (Anki / Quizlet) ================= */
+  function parseImport(text) {
+    // Turn pasted lines like "Term⇥Definition" / "Term: Definition" /
+    // "Term — Definition" / "Term, Definition" into {front, back} pairs.
+    const cards = [];
+    const lines = (text || "").split(/\r?\n/);
+    for (let line of lines) {
+      line = line.trim();
+      if (!line) continue;
+      // Skip obvious header rows (e.g. "Term\tDefinition")
+      if (/^(term|front|question|concept)\s*[#:t]\s*(definition|answer|back|meaning)$/i.test(line)) continue;
+      let front = "", back = "";
+      if (line.indexOf("\t") !== -1) {
+        const parts = line.split("\t");
+        front = parts[0].trim();
+        back = parts.slice(1).join(" ").trim();
+      } else {
+        let m = line.match(/^(.{1,160}?)\s*[:：]\s+(.+)$/);
+        if (m) { front = m[1].trim(); back = m[2].trim(); }
+        else {
+          m = line.match(/^(.{1,160}?)\s*[—–-]\s+(.+)$/);
+          if (m) { front = m[1].trim(); back = m[2].trim(); }
+          else {
+            m = line.match(/^(.{1,160}?),\s*(.+)$/);
+            if (m) { front = m[1].trim(); back = m[2].trim(); }
+          }
+        }
+      }
+      if (front && back && back !== front) cards.push({ front, back, style: "term" });
+    }
+    return cards;
+  }
+  function openImport() {
+    $("#impName").value = "";
+    $("#impText").value = "";
+    const err = $("#impError"); err.style.display = "none";
+    updateImpCount();
+    $("#importModal").classList.remove("hidden");
+    setTimeout(() => $("#impText").focus(), 60);
+  }
+  function updateImpCount() {
+    const n = parseImport($("#impText").value).length;
+    $("#impCount").textContent = n + " card" + (n === 1 ? "" : "s") + " found";
+  }
+  async function createImportDeck() {
+    const err = $("#impError"); err.style.display = "none";
+    const name = $("#impName").value.trim();
+    const cards = parseImport($("#impText").value);
+    if (!cards.length) { err.textContent = "Couldn't find any cards yet. Put one card per line, like: Term ⇥ Definition."; err.style.display = "block"; return; }
+    if (!name) { err.textContent = "Give your deck a name first."; err.style.display = "block"; return; }
+    const btn = $("#impCreateBtn"); btn.disabled = true;
+    const { ok, status, data } = await api("/decks", { method: "POST", body: { name, subject: "Other", cards } });
+    btn.disabled = false;
+    if (!ok) {
+      if (status === 403 && data.error === "deck_limit") { toast(data.message || "Deck limit reached.", "error"); return; }
+      err.textContent = data.error || "Couldn't create the deck."; err.style.display = "block"; return;
+    }
+    $("#importModal").classList.add("hidden");
+    toast("Imported " + cards.length + " card" + (cards.length === 1 ? "" : "s") + " ✅", "success");
+    navigate("#/deck/" + data.deck.id);
+  }
+  function initImport() {
+    $("#importClose").onclick = () => $("#importModal").classList.add("hidden");
+    $("#importModal").addEventListener("click", e => { if (e.target.id === "importModal") $("#importModal").classList.add("hidden"); });
+    $("#impText").addEventListener("input", updateImpCount);
+    $("#impCreateBtn").onclick = createImportDeck;
+  }
+
   /* ================= PARTICLES ================= */
   function initHeroParticles() {
     if (cleanupHeroParticles) {
@@ -840,6 +908,7 @@
     decks = sortDecks(decks, libSort);
     app.innerHTML = `
       <div class="page-head"><h1>My Decks</h1><div class="spacer"></div>
+        <button class="btn" onclick="App.openImport()">📥 Import</button>
         <button class="btn btn-primary" onclick="location.hash='#/generator'">+ New Deck</button></div>
       <div class="toolbar">
         <div class="search"><span class="icon">🔍</span><input id="libSearch" placeholder="Search decks…" value="${escapeHtml(libQuery)}" /></div>
@@ -875,6 +944,7 @@
         <div style="display:flex;gap:8px;margin-top:14px">
           <button class="btn btn-primary" onclick="location.hash='#/deck/${d.id}'">Open</button>
           <button class="btn" onclick="location.hash='#/study/${d.id}'">Study</button>
+          <button class="btn" onclick="App.quizDeck(${d.id})">Quiz</button>
           ${d.favorite ? `<button class="btn btn-danger" disabled title="Unfavorite before deleting" style="opacity:.4;cursor:not-allowed">🗑</button>` : `<button class="btn btn-danger" onclick="App.deleteDeckConfirm(${d.id})">🗑</button>`}
         </div>
       </div>`;
@@ -930,6 +1000,7 @@
           </div>
           <div class="spacer"></div>
           <button class="btn btn-primary btn-lg" onclick="location.hash='#/study/${d.id}'">▶ Start Study</button>
+          <button class="btn btn-lg" onclick="App.quizDeck(${d.id})">📝 Quiz</button>
           <button class="btn btn-lg" onclick="App.smartReview(${d.id})">🧠 Smart Review</button>
         </div>
         <div class="meta muted" style="margin:8px 0 18px">${cards.length} cards${d.accuracy != null ? " · " + Math.round(d.accuracy) + "% accuracy" : ""}${weakCount ? " · " + weakCount + " to review" : ""}</div>
@@ -1043,13 +1114,15 @@
   }
 
   /* ================= STUDY ================= */
+  let studyShuffle = true;   // shuffle deck order when studying
+  let studySource = [];      // the deck's original card order
   async function renderStudy(deckId) {
     const { ok, data } = await api("/decks/" + deckId);
     if (!ok || !data.deck || !data.deck.cards.length) {
       app.innerHTML = `<div class="empty view"><div class="em">📭</div><h3>Nothing to study</h3><p>This deck has no cards yet.</p><button class="btn btn-primary" onclick="location.hash='#/generator'">Create cards</button></div>`;
       return;
     }
-    mountStudy(deckId, shuffle([...data.deck.cards]), data.deck.name, false);
+    mountStudy(deckId, [...data.deck.cards], data.deck.name, false);
   }
 
   // Reliably leave a study/review session even when the target hash equals the
@@ -1066,11 +1139,15 @@
       cleanupStudyMode = null;
     }
 
+    studySource = cards;
+    const ordered = studyShuffle ? shuffle([...cards]) : [...cards];
+
     app.innerHTML = `
       <div class="page-head">
         <a class="breadcrumb" href="${deckId ? '#/deck/' + deckId : '#/library'}" onclick="App.leaveStudy('${deckId ? '#/deck/' + deckId : '#/library'}');return false;">← ${deckId ? "Back to Deck" : "My Decks"}</a>
         <div class="spacer"></div>
-        <div class="muted" style="font-size:13.5px;font-weight:600" id="sCounter">Card 1 of ${cards.length}</div>
+        <button class="btn btn-sm" id="sShuffle" title="Toggle shuffle">🔀 ${studyShuffle ? "Shuffled" : "In order"}</button>
+        <div class="muted" style="font-size:13.5px;font-weight:600" id="sCounter">Card 1 of ${ordered.length}</div>
       </div>
       <div class="study-area view">
         <div class="study-progress" id="sProg"></div>
@@ -1093,7 +1170,9 @@
           <span><kbd class="k-hint">→</kbd> Flip / Next</span>
         </div>
       </div>`;
-    runStudy(cards, name, deckId, isPractice, studyUrl);
+    const sh = $("#sShuffle");
+    if (sh) sh.onclick = () => { studyShuffle = !studyShuffle; mountStudy(deckId, studySource, name, isPractice, studyUrl); };
+    runStudy(ordered, name, deckId, isPractice, studyUrl);
   }
 
   // Smart Review: mix your weakest cards first with a few known ones for spaced reinforcement.
@@ -1286,6 +1365,135 @@
     showCard();
   }
 
+  /* ================= QUIZ (multiple choice) ================= */
+  // Build a question's options: the correct answer + up to 3 wrong answers
+  // drawn from other cards' backs in the same deck.
+  function quizOptions(cards, idx) {
+    const correct = (cards[idx].back || "").trim();
+    const seen = new Set([correct]);
+    const opts = [{ text: correct, correct: true }];
+    for (let j = 0; j < cards.length && opts.length < 4; j++) {
+      if (j === idx) continue;
+      const b = (cards[j].back || "").trim();
+      if (b && !seen.has(b)) { seen.add(b); opts.push({ text: b, correct: false }); }
+    }
+    return shuffle(opts);
+  }
+  async function quizDeck(deckId) {
+    const { ok, data } = await api("/decks/" + deckId);
+    if (!ok || !data.deck || !data.deck.cards.length) {
+      toast("This deck has no cards to quiz yet.", "error");
+      return;
+    }
+    mountQuiz([...data.deck.cards], data.deck.name, deckId);
+  }
+  function mountQuiz(cards, name, deckId) {
+    if (cleanupStudyMode) { cleanupStudyMode(); cleanupStudyMode = null; }
+    app.innerHTML = `
+      <div class="page-head">
+        <a class="breadcrumb" href="#/deck/${deckId}" onclick="App.leaveStudy('#/deck/${deckId}');return false;">← Back to Deck</a>
+        <div class="spacer"></div>
+        <div class="muted" style="font-size:13.5px;font-weight:600" id="qCounter">Question 1 of ${cards.length}</div>
+      </div>
+      <div class="study-area view">
+        <div class="study-progress" id="qProg"></div>
+        <div class="quiz-card"><div class="hint">Pick the best answer</div><div class="quiz-q" id="qQ"></div></div>
+        <div class="quiz-options" id="qOpts"></div>
+        <div class="quiz-feedback" id="qFeedback"></div>
+        <button class="btn btn-primary btn-lg hidden" id="qNext">Next →</button>
+        <div style="margin-top:22px;color:var(--text-faint);font-size:12.5px;display:flex;gap:18px;flex-wrap:wrap;justify-content:center">
+          <span><kbd class="k-hint">1</kbd>–<kbd class="k-hint">4</kbd> Pick an answer</span>
+          <span><kbd class="k-hint">Enter</kbd> Next</span>
+        </div>
+      </div>`;
+    runQuiz(cards, name, deckId);
+  }
+  function runQuiz(cards, deckName, deckId) {
+    let i = 0, correct = 0;
+    const results = [];
+    const start = Date.now();
+    let answered = false;
+    const q = $("#qQ"), opts = $("#qOpts"), prog = $("#qProg"), counter = $("#qCounter"), next = $("#qNext"), fb = $("#qFeedback");
+
+    function paintProg() {
+      prog.innerHTML = cards.map((c, idx) =>
+        `<i class="${idx < i ? (results[idx] ? "correct" : "wrong") : (idx === i ? "done" : "")}"></i>`
+      ).join("");
+      counter.textContent = `Question ${Math.min(i + 1, cards.length)} of ${cards.length}`;
+    }
+    function show() {
+      answered = false;
+      next.classList.add("hidden");
+      fb.className = "quiz-feedback"; fb.textContent = "";
+      const c = cards[i];
+      q.textContent = c.front;
+      const options = quizOptions(cards, i);
+      opts.innerHTML = options.map((o, k) =>
+        `<button class="quiz-opt" data-correct="${o.correct ? "1" : "0"}"><span class="k">${k + 1}</span><span>${escapeHtml(o.text)}</span></button>`
+      ).join("");
+      opts.querySelectorAll(".quiz-opt").forEach(b => b.onclick = () => pick(b));
+      paintProg();
+    }
+    function pick(btn) {
+      if (answered) return;
+      answered = true;
+      const isCorrect = btn.getAttribute("data-correct") === "1";
+      if (isCorrect) correct++;
+      results[i] = isCorrect;
+      opts.querySelectorAll(".quiz-opt").forEach(b => {
+        b.disabled = true;
+        if (b.getAttribute("data-correct") === "1") b.classList.add("right");
+        else if (b === btn) b.classList.add("wrong");
+      });
+      fb.className = "quiz-feedback " + (isCorrect ? "right" : "wrong");
+      fb.textContent = isCorrect ? "✅ Correct!" : "❌ Not quite — the answer is: " + cards[i].back;
+      next.classList.remove("hidden");
+    }
+    next.onclick = () => {
+      i++;
+      if (i >= cards.length) return finish();
+      show();
+    };
+    function onKey(e) {
+      const tag = e.target && e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (!$("#authModal").classList.contains("hidden") || !$("#confirmModal").classList.contains("hidden")) return;
+      if (!answered && /^[1-4]$/.test(e.key)) {
+        const btns = opts.querySelectorAll(".quiz-opt");
+        const n = +e.key - 1;
+        if (btns[n]) { e.preventDefault(); pick(btns[n]); }
+      } else if ((e.key === "Enter" || e.key === " ") && answered) {
+        e.preventDefault();
+        next.onclick();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    cleanupStudyMode = () => window.removeEventListener("keydown", onKey);
+
+    async function finish() {
+      if (cleanupStudyMode) { cleanupStudyMode(); cleanupStudyMode = null; }
+      const seconds = Math.max(1, Math.round((Date.now() - start) / 1000));
+      const payload = results.map((knew, idx) => ({ card_id: cards[idx].id, knew: !!knew }));
+      await api("/decks/" + deckId + "/study", { method: "POST", body: { results: payload, seconds } });
+      const acc = Math.round(100 * correct / cards.length);
+      app.innerHTML = `<div class="study-area view"><div class="result">
+        <div class="big">${acc === 100 ? "🏆" : "🎉"}</div>
+        <h2>Quiz Complete!</h2>
+        <p class="sub">You answered ${cards.length} question${cards.length > 1 ? "s" : ""}.</p>
+        <div class="result-grid">
+          <div class="rg"><div class="v">${cards.length}</div><div class="l">Questions</div></div>
+          <div class="rg"><div class="v">${correct}</div><div class="l">Correct</div></div>
+          <div class="rg"><div class="v">${acc}%</div><div class="l">Score</div></div>
+          <div class="rg"><div class="v">${formatTime(seconds)}</div><div class="l">Time</div></div>
+        </div>
+        <div style="margin-top:26px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-primary btn-lg" onclick="App.quizDeck(${deckId})">Quiz Again</button>
+          <button class="btn btn-lg" onclick="location.hash='#/deck/${deckId}'">Back to Deck</button>
+        </div></div></div>`;
+    }
+    show();
+  }
+
   /* ================= STATS ================= */
   async function renderStats() {
     const { data } = await api("/stats");
@@ -1329,6 +1537,7 @@
     initAuthModal();
     initChangelog();
     initConfirm();
+    initImport();
     document.addEventListener("click", closeSelects);
     api("/version").then(({ data }) => {
       if (data && data.version) $("#appVersion").textContent = "v" + data.version.split(".").slice(0, 2).join(".");
@@ -1350,6 +1559,9 @@
     delCard,
     regenCard,
     renderDeckNow: renderDeck,
+    openImport,
+    createImportDeck,
+    quizDeck,
     studyAgain: renderStudy,
     practiceWeak,
     practiceMissed,

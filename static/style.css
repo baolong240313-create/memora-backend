@@ -96,6 +96,7 @@ a { color: var(--brand); text-decoration: none; }
 .btn-danger { color: var(--danger); }
 .btn-danger:hover { border-color: var(--danger); background: var(--error-bg); }
 .btn-lg { padding: 14px 24px; font-size: 16px; border-radius: 14px; }
+.btn-sm { padding: 7px 13px; font-size: 13px; border-radius: 9px; }
 .btn-block { width: 100%; }
 .btn-icon {
   width: 38px; height: 38px; padding: 0; border-radius: 10px;
@@ -347,6 +348,35 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   vertical-align: middle;
 }
+
+/* ---------- quiz (multiple choice) ---------- */
+.quiz-card { width: 100%; max-width: 480px; border-radius: 22px; padding: 40px 34px;
+  display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff;
+  box-shadow: var(--shadow-lg); min-height: 160px; }
+.quiz-card .hint { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: rgba(255,255,255,0.75); margin-bottom: 18px; }
+.quiz-card .quiz-q { font-size: 24px; font-weight: 700; line-height: 1.35; max-width: 92%; }
+.quiz-options { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 480px; margin-top: 22px; }
+.quiz-opt { display: flex; align-items: center; gap: 12px; text-align: left; width: 100%; padding: 15px 16px;
+  border-radius: 14px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text);
+  font-size: 15px; font-weight: 600; cursor: pointer; transition: transform .15s, box-shadow .2s, border-color .2s, background .2s; }
+.quiz-opt:hover:not(:disabled) { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--brand); }
+.quiz-opt .k { width: 26px; height: 26px; flex: none; border-radius: 8px; display: grid; place-items: center;
+  background: var(--surface2); color: var(--text-soft); font-size: 13px; font-weight: 700; }
+.quiz-opt.right { border-color: var(--ok); background: var(--ok-bg); color: var(--ok); }
+.quiz-opt.right .k { background: var(--ok); color: #fff; }
+.quiz-opt.wrong { border-color: var(--danger); background: var(--error-bg); color: var(--danger); }
+.quiz-opt.wrong .k { background: var(--danger); color: #fff; }
+.quiz-opt:disabled { cursor: default; }
+.quiz-feedback { width: 100%; max-width: 480px; margin-top: 16px; padding: 11px 14px; border-radius: 12px;
+  font-weight: 700; font-size: 14px; display: none; }
+.quiz-feedback.right { display: block; background: var(--ok-bg); color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent); }
+.quiz-feedback.wrong { display: block; background: var(--error-bg); color: var(--error-text); border: 1px solid color-mix(in srgb, var(--error-text) 25%, transparent); }
+
+/* ---------- import deck modal ---------- */
+.imp-formats { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; font-size: 13px; color: var(--text-soft); margin-bottom: 16px; line-height: 1.6; }
+.imp-formats b { display: block; color: var(--text); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 4px; }
 
 /* ---------- result ---------- */
 .result { text-align: center; padding: 40px 20px; animation: pop 0.4s both; }

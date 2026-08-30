@@ -1,9 +1,24 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **12.3.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **12.4.0**.
 
-## [12.3.0] - current
+## [12.4.0] - current
+
+### Added
+- **Import decks from Anki/Quizlet.** The My Decks page now has an **Import**
+  button that opens a modal — paste one card per line and Memora turns them
+  into a deck. Supports tab-separated pairs (Anki / Quizlet export), `Term:
+  Definition`, `Term — Definition`, and `Term, Definition`.
+- **Multiple-choice Quiz mode.** Each deck has a **Quiz** button. Memora shows
+  the question with up to 4 answer choices (wrong answers are pulled from your
+  other cards' backs), gives instant right/wrong feedback, and scores your
+  run. Supports keyboard shortcuts: `1–4` to pick, `Enter` to advance.
+- **Shuffle toggle in study mode.** A **🔀 Shuffle / In order** button in the
+  study header lets you switch between a shuffled deck and the original order,
+  so you never just memorize the sequence. (Shuffle stays on by default.)
+
+## [12.3.0] - previous
 
 ### Added
 - **Upload PDFs in the generator.** You can now import `.pdf` files (not just

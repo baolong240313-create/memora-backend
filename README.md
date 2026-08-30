@@ -9,7 +9,9 @@
 - **One-free-flashcard rule** — signed-out users can generate **exactly 1 flashcard**; after that they're prompted to sign in. The limit persists across page refreshes (tracked server-side by guest id) and can't be bypassed by reopening the page. Signed-in users get full generation.
 - **Decks** — create, rename, favorite, delete, search, and sort (newest / oldest / most studied).
 - **Card editor** — edit, add, delete, and regenerate individual cards.
-- **Study mode** — one card at a time with a smooth 3D flip, self-rated verdicts (Didn't Know / Almost / Knew It), and a summary (accuracy, study time, cards needing practice).
+- **Study mode** — one card at a time with a smooth 3D flip, self-rated verdicts (Didn't Know / Almost / Knew It), a summary (accuracy, study time, cards needing practice), and an optional **shuffle toggle** so you don't just memorize the order.
+- **Quiz mode** — test yourself with multiple-choice questions (answers pulled from your own deck), with instant feedback and a final score.
+- **Import decks** — paste terms from Anki/Quizlet exports (or `Term: Definition` / `Term — Definition` lines) and turn them into a deck instantly.
 - **Progress** — per-deck progress bars, plus a statistics page with daily study time, cards reviewed, accuracy, and study streak.
 - **Polish** — light/dark mode, responsive layout, page transitions, toasts, confirm dialogs, and empty states.
 
