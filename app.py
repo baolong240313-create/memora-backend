@@ -10,7 +10,6 @@ import smtplib
 import time
 import urllib.parse
 import urllib.request
-from collections import defaultdict
 from email.message import EmailMessage
 from functools import wraps
 
@@ -25,7 +24,7 @@ import generator
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "14.0.0"
+APP_VERSION = "13.6.0"
 
 
 def _load_dotenv():
@@ -104,19 +103,15 @@ def _set_guest_cookie(resp, guest_id):
         httponly=True, samesite="Lax", max_age=60 * 60 * 24 * 365,
     )
 
-# Simple in-memory sliding-window rate limiter. Keys are "ip:identity".
-_rate_hits = defaultdict(list)
+# Database-backed sliding-window rate limiter. Keys are "ip:identity".
+# Stored in the DB so the limit is shared across gunicorn workers and survives
+# restarts (see db.rate_allowed / db.rate_record).
 
 def _rate_limit(key, limit, window):
     """Return True if the request is allowed, False if it exceeds the limit."""
-    now = time.time()
-    hits = _rate_hits[key]
-    # prune expired entries
-    while hits and hits[0] <= now - window:
-        hits.pop(0)
-    if len(hits) >= limit:
+    if not db.rate_allowed(key, limit, window):
         return False
-    hits.append(now)
+    db.rate_record(key)
     return True
 
 
@@ -167,7 +162,8 @@ def method_not_allowed(e):
 
 @app.errorhandler(413)
 def payload_too_large(e):
-    return jsonify({"error": f"Payload too large. Maximum size is {MAX_NOTES_LEN} characters."}), 413
+    max_mb = (app.config.get("MAX_CONTENT_LENGTH") or 0) // (1024 * 1024)
+    return jsonify({"error": f"Payload too large. Maximum upload size is {max_mb} MB."}), 413
 
 
 @app.errorhandler(500)
@@ -801,15 +797,10 @@ def generate():
     for c in cards:
         c.setdefault("style", style)
 
-    # If the user pasted a request ("make me a deck about X") but the AI
-    # returned no cards, flag it so the frontend can explain why.
-    request_hint = bool(generator._request_topic(notes_str)) and not cards
-
     resp = jsonify(
         {"cards": cards,
          "limited": bool(not user and cards),
-         "signed_in": bool(user),
-         "request_hint": request_hint}
+         "signed_in": bool(user)}
     )
     if guest_id:
         _set_guest_cookie(resp, guest_id)

@@ -222,6 +222,11 @@ SCHEMA = """
                 expires_at INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS rate_events (
+                key TEXT NOT NULL,
+                ts INTEGER NOT NULL
+            );
+
             -- Indexes for fast query performance and referential integrity
             CREATE INDEX IF NOT EXISTS idx_tokens_token ON tokens(token);
             CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id);
@@ -231,6 +236,7 @@ SCHEMA = """
             CREATE INDEX IF NOT EXISTS idx_study_sessions_user_id ON study_sessions(user_id);
             CREATE INDEX IF NOT EXISTS idx_study_sessions_deck_id ON study_sessions(deck_id);
             CREATE INDEX IF NOT EXISTS idx_study_sessions_user_date ON study_sessions(user_id, date);
+            CREATE INDEX IF NOT EXISTS idx_rate_events_key_ts ON rate_events(key, ts);
             """
 
 
@@ -399,6 +405,40 @@ def set_guest_used(guest_id):
             "ON CONFLICT(guest_id) DO UPDATE SET card_used = 1",
             (guest_id,),
         )
+
+
+# ------------------------------------------------------------------ rate limiting
+# Database-backed sliding-window limiter. Storing events in the DB (rather
+# than in memory) means the limit is shared across all gunicorn workers and
+# survives restarts, so it can't be bypassed by running multiple workers or
+# redeploying. Works on both SQLite and PostgreSQL via the engine shim.
+
+def rate_allowed(key, limit, window):
+    """Prune expired hits for `key` and return True if a new hit fits the limit.
+
+    `limit` = max hits allowed, `window` = seconds. Does NOT record the hit;
+    call rate_record() after a True return.
+    """
+    if not key:
+        return True
+    now = _ts()
+    cutoff = now - window
+    with get_db() as db:
+        db.execute("DELETE FROM rate_events WHERE key = ? AND ts < ?", (key, cutoff))
+        row = db.execute(
+            "SELECT COUNT(*) FROM rate_events WHERE key = ? AND ts >= ?",
+            (key, cutoff),
+        ).fetchone()
+        count = row[0] if row else 0
+        return count < limit
+
+
+def rate_record(key):
+    """Record a single hit for `key` (timestamped now)."""
+    if not key:
+        return
+    with get_db() as db:
+        db.execute("INSERT INTO rate_events (key, ts) VALUES (?,?)", (key, _ts()))
 
 
 # ------------------------------------------------------------------ decks

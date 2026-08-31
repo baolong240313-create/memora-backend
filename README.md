@@ -39,9 +39,8 @@ python app.py
 
 | Env var | Purpose |
 |---|---|
-| `MEMORA_SECRET` | Secret used to sign session/guest cookies. Set a long random value in production. Defaults to a random per-process key in dev (signs users out on restart). |
+| `MEMORA_SECRET` | Secret used to sign session/guest cookies. Set a long random value in production so logins (and the guest free-card limit) survive re-deploys instead of logging everyone out. Defaults to a random per-process key in dev (signs users out on restart). |
 | `MEMORA_DB` | Path to the SQLite database. Defaults to `~/memora-data/memora.db`. For durable data on Render, mount a persistent disk and point this at it (e.g. `/data/memora.db`). |
-| `MEMORA_SECRET` | A fixed secret key. Set this to a long random string so sessions (logins) survive re-deploys instead of logging everyone out. |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | Enables AI flashcard generation (default model `gemini-2.5-flash`). Falls back to the offline heuristic engine when unset/unavailable. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Enables email delivery for the password-reset flow. When unset, the reset code is logged to the server output instead (for local testing). |
 | `GOOGLE_CLIENT_ID` | Enables the **Sign in with Google** button in the login modal. See below for setup. |

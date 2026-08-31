@@ -1,9 +1,9 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **14.0.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **13.6.0**.
 
-## [14.0.0] - current
+## [13.6.0] - current
 
 ### Added
 - **Avatar customization.** The profile circle next to "Sign out" is now a
