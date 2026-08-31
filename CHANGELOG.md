@@ -1,9 +1,22 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **13.6.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **14.1.0**.
 
-## [13.6.0] - current
+## [14.1.0] - current
+
+### Fixed
+- **Rate limiting is now database-backed.** The sliding-window limiter moved
+  from in-memory to a shared `rate_events` table, so it's enforced across all
+  gunicorn workers and survives restarts (it can no longer be bypassed by
+  running multiple workers or redeploying).
+- **Dependencies pinned.** `requirements.txt` now pins exact versions for
+  reproducible builds.
+- **413 upload message corrected** — it now reports the real 16 MB payload cap
+  instead of a misleading character count.
+- **README config table** — removed a duplicated `MEMORA_SECRET` row.
+
+## [13.6.0] - previous
 
 ### Added
 - **Avatar customization.** The profile circle next to "Sign out" is now a
