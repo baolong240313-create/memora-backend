@@ -25,7 +25,7 @@ import generator
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "13.6.0"
+APP_VERSION = "14.0.0"
 
 
 def _load_dotenv():
@@ -801,10 +801,15 @@ def generate():
     for c in cards:
         c.setdefault("style", style)
 
+    # If the user pasted a request ("make me a deck about X") but the AI
+    # returned no cards, flag it so the frontend can explain why.
+    request_hint = bool(generator._request_topic(notes_str)) and not cards
+
     resp = jsonify(
         {"cards": cards,
          "limited": bool(not user and cards),
-         "signed_in": bool(user)}
+         "signed_in": bool(user),
+         "request_hint": request_hint}
     )
     if guest_id:
         _set_guest_cookie(resp, guest_id)

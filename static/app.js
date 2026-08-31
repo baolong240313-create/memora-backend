@@ -830,7 +830,9 @@
     }
     genResults = data.cards || [];
     if (!genResults.length) {
-      out.innerHTML = `<div class="empty"><div class="em">🤔</div><h3>No flashcards found</h3><p>Memora builds cards from your study material. If you pasted a <b>request</b> like “make me a deck about X”, the AI builds it when <b>GEMINI_API_KEY</b> is set. Otherwise paste real study material (terms, definitions, Q&amp;A, tables) to make a deck.</p></div>`;
+      out.innerHTML = data.request_hint
+        ? `<div class="empty"><div class="em">🤖</div><h3>The AI couldn't build this deck</h3><p>This looks like a <b>request</b> for the AI to write a deck, but it returned no cards. Make sure <b>GEMINI_API_KEY</b> is set and <b>valid</b> in the server Environment (Render → your service → Environment), then try again. If you're running the app locally, put the key in a <b>.env</b> file.</p></div>`
+        : `<div class="empty"><div class="em">🤔</div><h3>No flashcards found</h3><p>Memora builds cards from your study material. If you pasted a <b>request</b> like “make me a deck about X”, the AI builds it when <b>GEMINI_API_KEY</b> is set. Otherwise paste real study material (terms, definitions, Q&amp;A, tables) to make a deck.</p></div>`;
       return;
     }
     if (data.limited) {
