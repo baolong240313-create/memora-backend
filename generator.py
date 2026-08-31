@@ -454,6 +454,12 @@ def _parse_structured_qa(text):
             continue
 
         if pending_q is not None and not _Q_START.match(line):
+            if _is_question_line(line):
+                # The next line is itself a question, not an answer — don't make
+                # a wrong "QUESTION → QUESTION" card.
+                pending_q = None
+                pending_q = (line, idx)
+                continue
             q, qidx = pending_q
             if line:
                 pairs.append((q, line))
@@ -484,19 +490,31 @@ def _numbered_items(lines, start, end):
     return items
 
 
+_CATEGORY_QUESTION = re.compile(
+    r"^\s*(?:definition|question\s*\d*|synonym|antonym|sentence\s+completion|"
+    r"contextual\s+meaning|word\s+association|prefixes?/roots?|root\s+word|"
+    r"tone(?:\s*(?:&|and)\s*style)?|fill\s+(?:in\s+)?(?:the\s+blank)?|"
+    r"complete(?:\s+the\s+sentence)?|grammar|vocabulary|spelling|pronunciation|matching)\s*[:.\-]",
+    re.I,
+)
+
+
 def _is_question_line(ln):
     """True if a line is a real test question rather than an instruction/section.
 
     A question either has a fill-in-the-blank run of underscores, ends with a
-    question mark, is a quoted sentence ("..."), or is a math/computational
-    question that starts with a command word and contains a number or operator
-    (e.g. "Calculate 84 - 39.", "Solve for x: x + 9 = 23.").
+    question mark, is a quoted sentence ("..."), is a vocabulary/worksheet
+    category prompt ("Definition:", "Synonym:", "Antonym:", ...), or is a
+    math/computational question that starts with a command word and contains a
+    number or operator (e.g. "Calculate 84 - 39.", "Solve for x: x + 9 = 23.").
     """
     if re.search(r"_{3,}", ln):
         return True
     if ln.rstrip().endswith("?"):
         return True
     if ln.startswith('"') and ln.rstrip().endswith('"'):
+        return True
+    if _CATEGORY_QUESTION.match(ln):
         return True
     if (re.match(r"^\s*(?:calculate|solve|divide|evaluate|find|simplify|multiply|convert|compute|determine)\b", ln, re.I)
             and re.search(r"[\d=+*/×%^]", ln)):
@@ -526,7 +544,7 @@ def _parse_test_qa(text):
     # NOTE: a_pos is the position IN the `lines` list (not the original line number).
     a_pos = None
     for pos, (_, ln) in enumerate(lines):
-        if re.match(r"^\s*(?:answer\s*key|answers?)\s*[:.]?\s*$", ln, re.I):
+        if re.match(r"^\s*(?:answer\s*key\b|answers?)\b", ln, re.I):
             a_pos = pos
             break
     if a_pos is None:
@@ -544,7 +562,7 @@ def _parse_test_qa(text):
     a_items = _numbered_items(lines, a_pos + 1, len(lines))
     if len(a_items) < len(q_items):
         a_items = [(idx, ln) for idx, ln in post
-                    if not re.match(r"^\s*(?:answer|summary|correct)", ln, re.I)]
+                    if not re.match(r"^\s*(?:answer|summary|correct|explanation|example|note|hint)", ln, re.I)]
     a_items = [(i, t) for i, t in a_items
                if not re.match(r"^\s*(?:questions?|part\s*\d+|answers?)\s*[:.]?\s*$", t, re.I)]
 
@@ -781,6 +799,45 @@ def _fetch_definition(term, timeout=5):
     return ""
 
 
+# Request detection: "make me a deck about X" / "a simple English vocabulary deck"
+_REQUEST_VERB = re.compile(r"\b(?:create|make|build|generate|write|prepare|draft)\b", re.I)
+_REQUEST_NOUN = re.compile(r"\b(?:flashcard\s+)?(?:deck|set|flashcards?|cards?)\b", re.I)
+_TOPIC_AFTER = re.compile(r"\b(?:about|on|for|covering|of)\s+(.+?)\s*$", re.I)
+_LEAD_FILLER = re.compile(
+    r"^\s*(?:please\s+)?(?:can\s+you\s+)?(?:create|make|generate|write|prepare|draft)\s+"
+    r"(?:me\s+)?(?:a\s+|an\s+)?(?:simple|short|easy|new|fun|custom|basic|beginner)?\s*", re.I,
+)
+
+
+def _request_topic(notes):
+    """If `notes` is a request like "make me a deck about X" (rather than real
+    study material), return the topic X; otherwise return None.
+
+    A request must (a) contain a command verb (create/make/generate...), (b)
+    contain a deck noun (deck / cards / flashcards), and (c) be short. This
+    keeps long pasted worksheets from ever being treated as a request.
+    """
+    first = (notes.strip().split("\n", 1)[0] or "").strip()
+    if not first or len(first.split()) > 60:
+        return None
+    if not _REQUEST_VERB.search(first) or not _REQUEST_NOUN.search(first):
+        return None
+
+    m = _TOPIC_AFTER.search(first)
+    if m:
+        topic = m.group(1)
+    else:
+        # "a simple English vocabulary deck" -> "English vocabulary"
+        dm = _REQUEST_NOUN.search(first)
+        head = first[: dm.start()] if dm else first
+        head = _LEAD_FILLER.sub("", head)
+        topic = head.strip()
+    topic = topic.strip(" .;:,\u2019\u201d\u2018\u201c").strip()
+    if not topic or len(topic.split()) > 12:
+        return None
+    return topic
+
+
 def generate(notes, subject="Other", difficulty="Medium", number=5, style="q&a"):
     """Generate up to `number` flashcards from notes.
 
@@ -798,6 +855,12 @@ def generate(notes, subject="Other", difficulty="Medium", number=5, style="q&a")
         number = max(1, min(int(number), 50))
     except (ValueError, TypeError):
         number = 5
+
+    # 0. If the user pasted a request ("make me a deck about X") rather than
+    #    real study material, ask the AI to build a deck on that topic.
+    request_topic = _request_topic(notes)
+    if request_topic:
+        return generate_from_topic(subject, request_topic, difficulty, number, style)
 
     # 1. Attempt Gemini LLM if configured
     llm_cards = _generate_with_gemini(notes, subject, difficulty, number, style)

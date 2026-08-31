@@ -46,6 +46,28 @@ python app.py
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Enables email delivery for the password-reset flow. When unset, the reset code is logged to the server output instead (for local testing). |
 | `GOOGLE_CLIENT_ID` | Enables the **Sign in with Google** button in the login modal. See below for setup. |
 
+## Durable data on Render (free) — neon.tech / Supabase
+
+Render's **free** plan is ephemeral: it has **no persistent disk** (disks are premium-only), and Render's **free managed Postgres expires after 30 days** (then its data is wiped).
+
+The reliable free option is to use a **free external PostgreSQL database** and point `DATABASE_URL` at it. Memora already switches to PostgreSQL automatically whenever `DATABASE_URL` is set — no code changes needed.
+
+**neon.tech (recommended, free tier):**
+1. Sign up at <https://neon.tech>, create a project (any region).
+2. In **Connection details**, copy the **connection string** (starts with `postgresql://`).
+3. In Render → your service → **Environment**, add:
+   ```
+   DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require
+   ```
+4. Deploy. Your accounts, decks, cards, and progress now survive every redeploy.
+
+**Supabase (alternative):**
+1. Create a free project at <https://supabase.com>.
+2. **Project Settings → Database → Connection string** (the **URI** for your pooler or direct connection).
+3. Set the same `DATABASE_URL` env var on Render and redeploy.
+
+> Keep `GEMINI_API_KEY` set too — it powers AI flashcards and AI quizzes.
+
 ## Google sign-in setup
 
 1. Go to the **Google Cloud Console** → <https://console.cloud.google.com> and

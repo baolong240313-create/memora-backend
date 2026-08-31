@@ -1,9 +1,36 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **13.5.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **13.6.0**.
 
-## [13.5.0] - current
+## [13.6.0] - current
+
+### Added
+- **Avatar customization.** The profile circle next to "Sign out" is now a
+  clickable button that opens a picker — choose an emoji and a background
+  colour for your avatar.
+- **AI builds decks from requests.** Pasting something like "Create me a
+  flashcard deck about English" now makes the AI write the deck (with
+  GEMINI_API_KEY) instead of saying "no flashcards found".
+
+### Fixed
+- **Study-worksheet parsing massively improved.** Worksheets with category
+  questions ("Definition:", "Synonym:", "Antonym:", …) and an answer key are
+  now paired correctly front → answer, and the generator no longer pairs two
+  questions together into a nonsense "question → question" card.
+- **AI request detection now really works.** Pasting a request like
+  "Create me a simple English vocabulary deck" (with adjectives between the
+  article and "deck") is now routed to the AI topic builder instead of falling
+  through to "No flashcards found". Updated the empty-state message to explain
+  that request decks need `GEMINI_API_KEY`.
+
+### Docs
+- **Durable data on Render (free).** README now explains that Render's free
+  managed Postgres expires after 30 days and recommends pointing `DATABASE_URL`
+  at a free neon.tech or Supabase PostgreSQL (Memora switches automatically —
+  no code changes needed).
+
+## [13.5.0] - previous
 
 ### Added
 - **Progress persists across deploys (no paid disk needed).** The database now

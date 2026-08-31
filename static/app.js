@@ -8,6 +8,7 @@
   const state = {
     token: localStorage.getItem("memora_token") || null,
     user: JSON.parse(localStorage.getItem("memora_user") || "null"),
+    avatar: JSON.parse(localStorage.getItem("memora_avatar") || "null"),
     guestId: localStorage.getItem("memora_guest_id") || (function () {
       const g = "g-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
       localStorage.setItem("memora_guest_id", g);
@@ -75,9 +76,13 @@
     const nu = $("#navUser");
     if (state.user) {
       const initials = (state.user.name || "U").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+      const av = state.avatar || {};
+      const emoji = av.emoji || "";
+      const bg = av.color ? `background:${av.color};` : "";
       nu.innerHTML = `<div style="display:flex;align-items:center;gap:10px">
-        <div class="avatar" title="${escapeHtml(state.user.email)}">${initials}</div>
+        <button class="avatar" id="avatarBtn" title="Change your profile" style="${bg}border:0;cursor:pointer">${emoji || initials}</button>
         <button class="btn btn-ghost" id="logoutBtn">Sign out</button></div>`;
+      $("#avatarBtn").onclick = openAvatar;
       $("#logoutBtn").onclick = async () => {
         await api("/auth/logout", { method: "POST" });
         state.token = null; state.user = null;
@@ -154,6 +159,57 @@
     $("#authTitle").textContent = m === "login" ? "Welcome back" : "Create your account";
     $("#authSubmit").textContent = m === "login" ? "Sign In" : "Create Account";
   }
+  const AVATARS = ["🙂","🤖","🐱","🐼","🦊","🐨","🐯","🦄","🐙","🦖","🐧","🦋","🐶","🚀","🌟","⚽","🎧","📚","🎮","🔥"];
+  const AVATAR_COLORS = ["#6C5CE7","#00B894","#0984E3","#E17055","#E84393","#00CEC9","#6A4CF5","#FDCB6E"];
+
+  function openAvatar() {
+    const old = document.getElementById("avatarModal");
+    if (old) old.remove();
+    const av = state.avatar || {};
+    let emoji = av.emoji || "";
+    let color = av.color || AVATAR_COLORS[0];
+    const wrap = document.createElement("div");
+    wrap.id = "avatarModal";
+    wrap.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:99;padding:16px";
+    wrap.innerHTML = `
+      <div style="background:var(--surface,#fff);border-radius:16px;padding:22px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:92vh;overflow:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3 style="margin:0">Choose your avatar</h3>
+          <button id="avClose" style="background:none;border:none;font-size:22px;cursor:pointer">×</button>
+        </div>
+        <div id="avPreview" style="width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;background:${color}">${emoji || "🙂"}</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Your emoji</div>
+        <div id="avEmoji" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">${AVATARS.map(e => `<button data-e="${e}" style="font-size:22px;padding:8px;border-radius:10px;border:2px solid ${e === emoji ? "var(--accent,#6C5CE7)" : "transparent"};background:transparent;cursor:pointer">${e}</button>`).join("")}</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Background colour</div>
+        <div id="avColor" style="display:flex;gap:10px;margin-bottom:20px">${AVATAR_COLORS.map(c => `<button data-c="${c}" style="width:34px;height:34px;border-radius:50%;background:${c};border:3px solid ${c === color ? "#fff" : "transparent"};outline:${c === color ? "2px solid var(--accent,#6C5CE7)" : "none"};cursor:pointer"></button>`).join("")}</div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button id="avCancel" class="btn">Cancel</button>
+          <button id="avSave" class="btn btn-primary">Save</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    wrap.querySelector("#avClose").onclick = () => wrap.remove();
+    wrap.querySelector("#avCancel").onclick = () => wrap.remove();
+    wrap.querySelectorAll("#avEmoji button").forEach(b => b.onclick = () => {
+      emoji = b.getAttribute("data-e");
+      wrap.querySelectorAll("#avEmoji button").forEach(x => x.style.borderColor = "transparent");
+      b.style.borderColor = "var(--accent,#6C5CE7)";
+      wrap.querySelector("#avPreview").textContent = emoji;
+    });
+    wrap.querySelectorAll("#avColor button").forEach(b => b.onclick = () => {
+      color = b.getAttribute("data-c");
+      wrap.querySelectorAll("#avColor button").forEach(x => { x.style.outline = "none"; x.style.borderColor = "transparent"; });
+      b.style.outline = "2px solid var(--accent,#6C5CE7)"; b.style.borderColor = "#fff";
+      wrap.querySelector("#avPreview").style.background = color;
+    });
+    wrap.querySelector("#avSave").onclick = () => {
+      state.avatar = { emoji, color };
+      localStorage.setItem("memora_avatar", JSON.stringify(state.avatar));
+      wrap.remove();
+      renderNav();
+    };
+  }
+
   function initAuthModal() {
     $("#authClose").onclick = () => $("#authModal").classList.add("hidden");
     $("#authModal").addEventListener("click", e => { if (e.target.id === "authModal") $("#authModal").classList.add("hidden"); });
@@ -774,7 +830,7 @@
     }
     genResults = data.cards || [];
     if (!genResults.length) {
-      out.innerHTML = `<div class="empty"><div class="em">🤔</div><h3>No flashcards found</h3><p>Memora builds cards from the <b>facts and definitions</b> in your notes. Try pasting real study material (terms, definitions, Q&amp;A, tables) instead of a request like “make me a deck”.</p></div>`;
+      out.innerHTML = `<div class="empty"><div class="em">🤔</div><h3>No flashcards found</h3><p>Memora builds cards from your study material. If you pasted a <b>request</b> like “make me a deck about X”, the AI builds it when <b>GEMINI_API_KEY</b> is set. Otherwise paste real study material (terms, definitions, Q&amp;A, tables) to make a deck.</p></div>`;
       return;
     }
     if (data.limited) {
