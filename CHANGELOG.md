@@ -1,9 +1,28 @@
 # Changelog
 
 All notable changes to Memora are documented here. Format based on
-[Keep a Changelog](https://keepachangelog.com/). Current version: **13.4.0**.
+[Keep a Changelog](https://keepachangelog.com/). Current version: **13.5.0**.
 
-## [13.4.0] - current
+## [13.5.0] - current
+
+### Added
+- **Progress persists across deploys (no paid disk needed).** The database now
+  uses PostgreSQL automatically when `DATABASE_URL` is set (e.g. a free Render
+  managed Postgres), so accounts, decks, and study progress survive redeploys.
+  It still uses SQLite locally / when no `DATABASE_URL` is set.
+
+### Changed
+- **Study activity chart** is now taller and has a vertical (minutes) axis with
+  gridlines, so you can read the values instead of guessing.
+- **Review is strictly by deck.** Removed the "Review All Decks" button from the
+  Review page so weak cards are reviewed one deck at a time, never all jumbled
+  together.
+
+### Fixed
+- **AI flashcards on the Create page** generate live with your `GEMINI_API_KEY`
+  (the normal "Generate Flashcards" button uses Gemini to write the cards).
+
+## [13.4.0] - previous
 
 ### Added
 - **Science quiz topics.** Added curated question banks for physics, chemistry,

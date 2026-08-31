@@ -1,45 +1,156 @@
-"""Memora database layer (SQLite)."""
+"""Memora database layer.
+
+Supports SQLite (default, used locally) and PostgreSQL (used automatically
+when DATABASE_URL is set, e.g. a free Render managed Postgres) so user data
+survives redeploys without needing a paid persistent disk.
+"""
 import os
-import sqlite3
 import time
 from contextlib import contextmanager
 
 _LOCAL = os.path.join(os.path.expanduser("~"), "memora-data")
-os.makedirs(_LOCAL, exist_ok=True)
-DB_PATH = os.environ.get("MEMORA_DB", os.path.join(_LOCAL, "memora.db"))
-# Ensure the folder that holds the database exists, so a MEMORA_DB pointing at a
-# persistent Render disk mount (e.g. /data/memora.db) works out of the box.
 try:
-    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+    os.makedirs(_LOCAL, exist_ok=True)
 except OSError:
     pass
+DATABASE_URL = os.environ.get("DATABASE_URL")
+DB_PATH = os.environ.get("MEMORA_DB", os.path.join(_LOCAL, "memora.db"))
+
+IS_PG = bool(DATABASE_URL)
+
+# Ensure the folder that holds the local SQLite file exists.
+if not IS_PG:
+    try:
+        os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+    except OSError:
+        pass
 
 
 def _ts():
     return int(time.time())
 
 
-@contextmanager
-def get_db():
-    conn = sqlite3.connect(DB_PATH, timeout=10.0)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA synchronous = NORMAL")
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+# ------------------------------------------------------------- engine helpers
+if IS_PG:
+    import psycopg2
+
+    def _translate(sql):
+        # PostgreSQL uses %s placeholders and SERIAL (not AUTOINCREMENT).
+        return sql.replace("?", "%s").replace(
+            "INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY"
+        )
+
+    def _targets_id(sql):
+        # Tables that have an auto-generated `id` column (cards/users/decks/etc).
+        u = sql.upper()
+        return any(
+            t in u
+            for t in ("INTO USERS", "INTO DECKS", "INTO CARDS", "INTO STUDY_SESSIONS", "INTO PASSWORD_RESETS")
+        )
+
+    def _split_sql(script):
+        return [s for s in script.split(";") if s.strip()]
+
+    class _Row:
+        __slots__ = ("_m", "_v")
+
+        def __init__(self, cols, values):
+            self._m = dict(zip(cols, values))
+            self._v = values
+
+        def __getitem__(self, key):
+            if isinstance(key, int):
+                return self._v[key]
+            return self._m[key]
+
+        def keys(self):
+            return list(self._m.keys())
+
+    class _Cursor:
+        def __init__(self, cur, returning=False):
+            self._cur = cur
+            self.lastrowid = None
+            if returning and cur.description:
+                r = cur.fetchone()
+                if r:
+                    self.lastrowid = r[0]
+
+        def fetchone(self):
+            r = self._cur.fetchone()
+            if r is None:
+                return None
+            cols = [d[0] for d in self._cur.description]
+            return _Row(cols, r)
+
+        def fetchall(self):
+            if self._cur.description is None:
+                return []
+            cols = [d[0] for d in self._cur.description]
+            return [_Row(cols, r) for r in self._cur.fetchall()]
+
+    class _PgConn:
+        def __init__(self, conn):
+            self._c = conn
+
+        def execute(self, sql, params=None):
+            sql = _translate(sql)
+            returning = sql.lstrip().upper().startswith("INSERT") and _targets_id(sql)
+            if returning and " RETURNING " not in sql.upper():
+                sql = sql.rstrip().rstrip(";") + " RETURNING id"
+            cur = self._c.cursor()
+            cur.execute(sql, params if params is not None else ())
+            return _Cursor(cur, returning)
+
+        def executescript(self, script):
+            for stmt in _split_sql(script):
+                if not stmt.strip():
+                    continue
+                cur = self._c.cursor()
+                cur.execute(_translate(stmt))
+
+        def commit(self):
+            self._c.commit()
+
+        def rollback(self):
+            self._c.rollback()
+
+        def close(self):
+            self._c.close()
+
+    @contextmanager
+    def get_db():
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = False
+        try:
+            yield _PgConn(conn)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+else:
+    import sqlite3
+
+    @contextmanager
+    def get_db():
+        conn = sqlite3.connect(DB_PATH, timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
 
-def init_db():
-    with get_db() as db:
-        db.executescript(
-            """
+SCHEMA = """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
@@ -121,14 +232,41 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_study_sessions_deck_id ON study_sessions(deck_id);
             CREATE INDEX IF NOT EXISTS idx_study_sessions_user_date ON study_sessions(user_id, date);
             """
-        )
-    # migrate: add 'missed' column to older databases
+
+
+def init_db():
+    with get_db() as db:
+        db.executescript(SCHEMA)
+
+    if IS_PG:
+        with get_db() as db:
+            db.execute(
+                "ALTER TABLE study_sessions ADD COLUMN IF NOT EXISTS missed TEXT NOT NULL DEFAULT ''"
+            )
+            for ddl in (
+                "ALTER TABLE card_stats ADD COLUMN IF NOT EXISTS reps INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE card_stats ADD COLUMN IF NOT EXISTS interval INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE card_stats ADD COLUMN IF NOT EXISTS ease REAL NOT NULL DEFAULT 2.5",
+                "ALTER TABLE card_stats ADD COLUMN IF NOT EXISTS due INTEGER",
+            ):
+                db.execute(ddl)
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS password_resets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    code_hash TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL
+                )"""
+            )
+        return
+
+    # --- SQLite-only migrations ---
     with get_db() as _con:
         cols = [c[1] for c in _con.execute("PRAGMA table_info(study_sessions)").fetchall()]
         if "missed" not in cols:
             _con.execute("ALTER TABLE study_sessions ADD COLUMN missed TEXT NOT NULL DEFAULT ''")
 
-    # migrate: add spaced-repetition columns to card_stats on older databases
     with get_db() as _con:
         cols = [c[1] for c in _con.execute("PRAGMA table_info(card_stats)").fetchall()]
         for name, ddl in (("reps", "ALTER TABLE card_stats ADD COLUMN reps INTEGER NOT NULL DEFAULT 0"),
@@ -138,7 +276,6 @@ def init_db():
             if name not in cols:
                 _con.execute(ddl)
 
-    # migrate: create password_resets table on older databases
     with get_db() as _con:
         _con.execute(
             """CREATE TABLE IF NOT EXISTS password_resets (

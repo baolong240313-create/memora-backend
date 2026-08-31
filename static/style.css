@@ -440,7 +440,13 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .loader-steps .on { color: var(--brand); font-weight: 700; }
 
 /* ---------- study activity chart ---------- */
-.chart-bars { display: flex; align-items: flex-end; gap: 6px; height: 90px; position: relative; }
+.chart { display: flex; gap: 8px; align-items: stretch; margin-top: 14px; }
+.chart-y { width: 46px; height: 150px; display: flex; flex-direction: column; justify-content: space-between; text-align: right; font-size: 10px; color: var(--text-faint); padding-right: 6px; box-sizing: border-box; }
+.chart-body { flex: 1; min-width: 0; }
+.chart-wrap { position: relative; height: 150px; }
+.chart-grid { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
+.chart-grid i { border-top: 1px dashed var(--surface2); }
+.chart-bars { display: flex; align-items: flex-end; gap: 6px; height: 150px; position: relative; z-index: 1; }
 .chart-bars .bar { flex: 1; position: relative; cursor: pointer; background: var(--brand-soft); border-radius: 6px 6px 0 0; transition: height 0.5s ease, background .15s; }
 .chart-bars .bar.has { background: linear-gradient(180deg, var(--brand-2), var(--brand)); }
 .chart-bars .bar .tip {
@@ -450,7 +456,7 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
   pointer-events: none; transition: opacity .15s, translate .15s; translate: 0 4px; z-index: 5;
 }
 .chart-bars .bar:hover .tip { opacity: 1; translate: 0 0; }
-.chart-labels { display: flex; gap: 6px; margin-top: 6px; font-size: 11px; color: var(--text-faint); }
+.chart-labels { display: flex; gap: 6px; margin-top: 6px; font-size: 11px; color: var(--text-faint); padding-left: 54px; }
 .chart-labels span { flex: 1; text-align: center; }
 
 .page-head { display: flex; align-items: center; gap: 14px; margin: 30px 0 20px; flex-wrap: wrap; }

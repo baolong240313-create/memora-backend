@@ -945,8 +945,7 @@
       return;
     }
     app.innerHTML = `
-      <div class="page-head"><h1>Review</h1><div class="spacer"></div>
-        <button class="btn btn-primary btn-lg" onclick="App.smartReviewAll()">🧠 Review All Decks</button></div>
+      <div class="page-head"><h1>Review</h1><div class="spacer"></div></div>
       <div class="view">
         <p class="section-sub" style="margin-bottom:20px">${totalWeak} weak card${totalWeak > 1 ? "s" : ""} across ${rows.length} deck${rows.length > 1 ? "s" : ""}. Pick a deck to review first — its weak cards are shuffled.</p>
         <div class="section-title" style="margin-top:0">Choose a deck</div>
@@ -1787,8 +1786,16 @@
       <div class="panel">
         <div class="section-title" style="margin-top:0">Study activity</div>
         <div class="section-sub">Minutes studied per day · hover a bar for details</div>
-        <div class="chart-bars" style="margin-top:14px">${bars.map(b => `<div class="bar ${b ? "has" : ""}" style="height:${b ? Math.max(6, 100 * b / max) : 2}%" title=""><span class="tip">${minLabel(b)}</span></div>`).join("")}</div>
-        <div class="chart-labels">${labels.map(l => `<span>${l}</span>`).join("")}</div>
+        <div class="chart">
+          <div class="chart-y"><span>${minLabel(max)}</span><span>${minLabel(Math.round(max / 2))}</span><span>0</span></div>
+          <div class="chart-body">
+            <div class="chart-wrap">
+              <div class="chart-grid"><i></i><i></i><i></i></div>
+              <div class="chart-bars">${bars.map(b => `<div class="bar ${b ? "has" : ""}" style="height:${b ? Math.max(6, 100 * b / max) : 2}%" title=""><span class="tip">${minLabel(b)}</span></div>`).join("")}</div>
+            </div>
+            <div class="chart-labels">${labels.map(l => `<span>${l}</span>`).join("")}</div>
+          </div>
+        </div>
       </div>`;
   }
 
